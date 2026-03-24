@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+    <preference for="PlaceholderTech\Klar\Api\DiscountServiceInterface" type="PlaceholderTech\Klar\Model\DiscountService"/>
+    <preference for="PlaceholderTech\Klar\Api\Data\ApiInterface" type="PlaceholderTech\Klar\Model\Api"/>
+    <preference for="PlaceholderTech\Klar\Api\Data\TaxInterface" type="PlaceholderTech\Klar\Model\Data\Tax"/>
+    <preference for="PlaceholderTech\Klar\Api\Data\DiscountInterface" type="PlaceholderTech\Klar\Model\Data\Discount"/>
+    <preference for="PlaceholderTech\Klar\Api\Data\LineItemInterface" type="PlaceholderTech\Klar\Model\Data\LineItem"/>
+    <preference for="PlaceholderTech\Klar\Api\Data\RefundedLineItemInterface" type="PlaceholderTech\Klar\Model\Data\RefundedLineItem"/>
+    <preference for="PlaceholderTech\Klar\Api\Data\OrderInterface" type="PlaceholderTech\Klar\Model\Data\Order"/>
+    <preference for="PlaceholderTech\Klar\Api\Data\ShippingInterface" type="PlaceholderTech\Klar\Model\Data\Shipping"/>
+    <preference for="PlaceholderTech\Klar\Api\Data\CustomerInterface" type="PlaceholderTech\Klar\Model\Data\Customer"/>
+    <preference for="PlaceholderTech\Klar\Api\Data\OptionalIdentifiersInterface" type="PlaceholderTech\Klar\Model\Data\OptionalIdentifiers"/>
+    <virtualType name="KlarLogger" type="Magento\Framework\Logger\Monolog">
+        <arguments>
+            <argument name="handlers" xsi:type="array">
+                <item name="error" xsi:type="object">PlaceholderTech\Klar\Logger\Handler\InfoHandler</item>
+            </argument>
+        </arguments>
+    </virtualType>
+    <type name="PlaceholderTech\Klar\Model\Api">
+        <arguments>
+            <argument name="logger" xsi:type="object">KlarLogger</argument>
+        </arguments>
+    </type>
+
+    <type name="Magento\Framework\Console\CommandListInterface">
+        <arguments>
+            <argument name="commands" xsi:type="array">
+                <item name="KlarOrder" xsi:type="object">PlaceholderTech\Klar\Command\Order</item>
+            </argument>
+        </arguments>
+    </type>
+    <type name="Magento\MysqlMq\Model\Driver\Queue">
+        <plugin name="queue_reject_plugin"
+                type="PlaceholderTech\Klar\Plugin\QueueRejectPlugin"/>
+    </type>
+    <type name="Magento\Sales\Model\ResourceModel\Order\Grid\Collection">
+        <plugin name="klar_order_grid_plugin"
+                type="PlaceholderTech\Klar\Plugin\KlarOrderGridPlugin"/>
+    </type>
+</config>
