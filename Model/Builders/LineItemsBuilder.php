@@ -14,6 +14,7 @@ use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Framework\Intl\DateTimeFactory;
 use Magento\Sales\Api\Data\OrderInterface as SalesOrderInterface;
 use Magento\Sales\Api\Data\OrderItemInterface as SalesOrderItemInterface;
+use Magento\Tax\Model\Config as TaxConfig;
 
 class LineItemsBuilder extends AbstractApiRequestParamsBuilder
 {
@@ -22,6 +23,7 @@ class LineItemsBuilder extends AbstractApiRequestParamsBuilder
     private TaxesBuilder $taxesBuilder;
     private Config $config;
     private LineItemDiscountsBuilder $discountsBuilder;
+    private TaxConfig $taxConfig;
 
     /**
      * LineItemsBuilder constructor.
@@ -32,6 +34,7 @@ class LineItemsBuilder extends AbstractApiRequestParamsBuilder
      * @param TaxesBuilder $taxesBuilder
      * @param Config $config
      * @param LineItemDiscountsBuilder $discountsBuilder
+     * @param TaxConfig $taxConfig
      */
     public function __construct(
         DateTimeFactory $dateTimeFactory,
@@ -39,7 +42,8 @@ class LineItemsBuilder extends AbstractApiRequestParamsBuilder
         CategoryRepositoryInterface $categoryRepository,
         TaxesBuilder $taxesBuilder,
         Config $config,
-        LineItemDiscountsBuilder $discountsBuilder
+        LineItemDiscountsBuilder $discountsBuilder,
+        TaxConfig $taxConfig
     ) {
         parent::__construct($dateTimeFactory);
         $this->lineItemFactory = $lineItemFactory;
@@ -47,6 +51,7 @@ class LineItemsBuilder extends AbstractApiRequestParamsBuilder
         $this->taxesBuilder = $taxesBuilder;
         $this->config = $config;
         $this->discountsBuilder = $discountsBuilder;
+        $this->taxConfig = $taxConfig;
     }
 
     /**
@@ -71,7 +76,10 @@ class LineItemsBuilder extends AbstractApiRequestParamsBuilder
             $productVariant = $this->getProductVariant($salesOrderItem);
             $productBrand = false;
             $categoryName = $this->getCategoryName($salesOrderItem);
-            $totalBeforeTaxesAndDiscounts = $salesOrderItem->getOriginalPrice() * $salesOrderItem->getQtyOrdered();
+            $totalBeforeTaxesAndDiscounts = $this->getPriceExclTax(
+                (float)$salesOrderItem->getOriginalPrice(),
+                $salesOrderItem
+            ) * $salesOrderItem->getQtyOrdered();
             $weightInGrams = 0;
 
             if ($product) {
@@ -249,10 +257,37 @@ class LineItemsBuilder extends AbstractApiRequestParamsBuilder
         return round($weightInKgs, 3);
     }
 
+    /**
+     * Return price excluding tax
+     *
+     * @param float $price
+     * @param SalesOrderItemInterface $salesOrderItem
+     * @return float
+     */
+    private function getPriceExclTax(float $price, SalesOrderItemInterface $salesOrderItem): float
+    {
+        if ($this->taxConfig->priceIncludesTax($salesOrderItem->getStoreId())) {
+            $taxPercent = (float)$salesOrderItem->getTaxPercent();
+            if ($taxPercent > 0) {
+                return round($price / (1 + $taxPercent / 100), 2);
+            }
+        }
+
+        return $price;
+    }
+
+    /**
+     * Return product GMV (Gross Merchandise Value) — the original catalog price excluding tax.
+     *
+     * @param SalesOrderItemInterface $salesOrderItem
+     * @return float
+     */
     private function getProductGmv(SalesOrderItemInterface $salesOrderItem): float
     {
-        return round((float) $salesOrderItem->getOriginalPrice(), 2) !== 0.0 ?
+        $price = round((float) $salesOrderItem->getOriginalPrice(), 2) !== 0.0 ?
             (float) $salesOrderItem->getOriginalPrice() : (float) $salesOrderItem->getPrice();
+
+        return $this->getPriceExclTax($price, $salesOrderItem);
     }
 
     /**
@@ -287,6 +322,8 @@ class LineItemsBuilder extends AbstractApiRequestParamsBuilder
             $taxAmount = $salesOrderItem->getTaxAmount();
         }
 
-        return $productGmv + $taxAmount - $discountAmount;
+        $productGmv += $taxAmount;
+
+        return $productGmv - $discountAmount;
     }
 }
