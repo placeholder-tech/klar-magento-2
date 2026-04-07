@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace PlaceholderTech\Klar\Model\Builders;
 
+use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
 use PlaceholderTech\Klar\Api\Data\LineItemInterface;
 use PlaceholderTech\Klar\Api\Data\LineItemInterfaceFactory;
 use PlaceholderTech\Klar\Helper\Config;
@@ -99,7 +100,7 @@ class LineItemsBuilder extends AbstractApiRequestParamsBuilder
                 $lineItem->setProductCollection($categoryName);
             }
 
-            $lineItem->setProductCogs((float)$salesOrderItem->getBaseCost());
+            $lineItem->setProductCogs($this->getBaseCost($salesOrderItem));
             $lineItem->setProductGmv($this->getProductGmv($salesOrderItem));
             $lineItem->setProductShippingWeightInGrams($weightInGrams);
             $lineItem->setSku($salesOrderItem->getSku());
@@ -247,6 +248,33 @@ class LineItemsBuilder extends AbstractApiRequestParamsBuilder
         $weightInKgs = $weightLbs * $conversionFactor;
 
         return round($weightInKgs, 3);
+    }
+
+    /**
+     * Return base cost. For Configurable - get base cost from Child product
+     *
+     * @param SalesOrderItemInterface $salesOrderItem
+     * @return float
+     */
+    private function getBaseCost(SalesOrderItemInterface $salesOrderItem): float
+    {
+        $baseCost = (float)$salesOrderItem->getBaseCost();
+
+        if ($salesOrderItem->getProductType() === Configurable::TYPE_CODE) {
+            $productOptions = $salesOrderItem->getProductOptions();
+            $childrenSku = $productOptions['simple_sku'] ?? null;
+
+            if ($childrenSku) {
+                foreach ($salesOrderItem->getChildrenItems() as $childItem) {
+                    if ($childItem->getSku() === $childrenSku) {
+                        $baseCost = (float)$childItem->getBaseCost();
+                        break;
+                    }
+                }
+            }
+        }
+
+        return $baseCost;
     }
 
     private function getProductGmv(SalesOrderItemInterface $salesOrderItem): float
