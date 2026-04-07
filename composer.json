@@ -1,6 +1,6 @@
 {
   "name": "placeholder-tech/klar-magento-2",
-  "version": "1.0.18",
+  "version": "1.0.19",
   "description": "Klar integration for Magento 2.4.x",
   "type": "magento2-module",
   "require": {
