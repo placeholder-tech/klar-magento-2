@@ -14,6 +14,10 @@ This module has been developed and tested on Magento 2.4.5-p1 using PHP 8.1. It 
 and PHP, but we cannot guarantee compatibility. If you encounter any issues with compatibility, please let us know by
 creating an issue on GitHub.
 
+## Migrating from ICT_Klar (ltd-iconcept/magento2-klar)
+
+If you are currently running the old `ltd-iconcept/magento2-klar` module (`ICT_Klar`), please follow the [Migration Guide](MIGRATION.md) to switch to this version. Your configuration, database tables, and queue settings are preserved during the migration.
+
 ## Installation
 
 To install the module, follow these steps:
