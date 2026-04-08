@@ -103,7 +103,11 @@ class ApiRequestParamsBuilder extends AbstractApiRequestParamsBuilder
         }
 
         $order->setClosedAt($this->getClosedAt($salesOrder));
-        $order->setCancelledAt($this->getCancelledAt($salesOrder));
+
+        $cancelledAt = $this->getCancelledAt($salesOrder);
+        if ($cancelledAt) {
+            $order->setCancelledAt($cancelledAt);
+        }
         $order->setCurrencyCodeIso3Letter($salesOrder->getOrderCurrencyCode());
         $order->setFinancialStatus($this->getFinancialStatus($salesOrder));
         $order->setShipmentStatus($this->getShipmentStatus($salesOrder));

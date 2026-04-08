@@ -48,7 +48,7 @@ abstract class AbstractApiRequestParamsBuilder
      */
     protected function getTimestamp(string $dateTime): int
     {
-        if ($dateTime === '' | !$dateTime) {
+        if ($dateTime === '' || !$dateTime) {
             return $this->dateTimeFactory->create()->getTimestamp();
         }
 
