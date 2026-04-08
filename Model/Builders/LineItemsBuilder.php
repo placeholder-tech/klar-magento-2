@@ -72,7 +72,7 @@ class LineItemsBuilder extends AbstractApiRequestParamsBuilder
             $productVariant = $this->getProductVariant($salesOrderItem);
             $productBrand = false;
             $categoryName = $this->getCategoryName($salesOrderItem);
-            $totalBeforeTaxesAndDiscounts = $salesOrderItem->getOriginalPrice() * $salesOrderItem->getQtyOrdered();
+            $totalBeforeTaxesAndDiscounts = (float)$salesOrderItem->getRowTotalInclTax();
             $weightInGrams = 0;
 
             if ($product) {
@@ -279,8 +279,8 @@ class LineItemsBuilder extends AbstractApiRequestParamsBuilder
 
     private function getProductGmv(SalesOrderItemInterface $salesOrderItem): float
     {
-        return round((float) $salesOrderItem->getOriginalPrice(), 2) !== 0.0 ?
-            (float) $salesOrderItem->getOriginalPrice() : (float) $salesOrderItem->getPrice();
+        $priceInclTax = (float) $salesOrderItem->getPriceInclTax();
+        return $priceInclTax !== 0.0 ? $priceInclTax : (float) $salesOrderItem->getOriginalPrice();
     }
 
     /**
@@ -307,14 +307,6 @@ class LineItemsBuilder extends AbstractApiRequestParamsBuilder
             $discountAmount += $lineItemDiscount['discountAmount'] * $quantity;
         }
 
-        $taxAmount = round($taxAmount, 2);
-        if (abs($salesOrderItem->getTaxAmount() - $taxAmount) > 0) {
-            // If calculated tax amount does not match tax amount from the order item, the latter takes preference.
-            // This fix covers edge case scenario when Magento may add extra cent to the order item's tax amount
-            // but we want all subtotals to match still
-            $taxAmount = $salesOrderItem->getTaxAmount();
-        }
-
-        return $productGmv + $taxAmount - $discountAmount;
+        return $productGmv - $taxAmount - $discountAmount;
     }
 }

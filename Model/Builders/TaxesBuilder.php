@@ -75,13 +75,7 @@ class TaxesBuilder extends AbstractApiRequestParamsBuilder
 
                 $qty = $salesOrderItem->getQtyOrdered() ? $salesOrderItem->getQtyOrdered() : 1;
 
-                // Get taxable item price depending on "Apply Customer Tax" config state
-                $itemPrice = (float)$salesOrderItem->getPrice();
-                if ($this->taxConfig->applyTaxAfterDiscount()) {
-                    $itemPrice -= ($this->discountService->getDiscountAmountFromOrderItem($salesOrderItem) / $qty);
-                }
-
-                $taxAmount = $itemPrice * $taxRate;
+                $taxAmount = (float)$salesOrderItem->getTaxAmount() / $qty;
             } else {
                 $taxAmount = (float)$taxItem['real_amount'];
             }
