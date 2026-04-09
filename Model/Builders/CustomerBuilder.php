@@ -50,11 +50,12 @@ class CustomerBuilder extends AbstractApiRequestParamsBuilder
     public function buildFromSalesOrder(SalesOrderInterface $salesOrder): array
     {
         $customerId = $salesOrder->getCustomerId();
+        $normalizedEmail = strtolower(trim($salesOrder->getCustomerEmail()));
         $customerEmail = $this->config->getSendEmail() ? $salesOrder->getCustomerEmail() : "redacted@getklar.com";
-        $customerEmailHash = sha1($this->config->getPublicKey() . $salesOrder->getCustomerEmail());
+        $customerEmailHash = sha1($this->config->getPublicKey() . $normalizedEmail);
 
         if (!$customerId) {
-            $customerId = $this->generateGuestCustomerId($customerEmail);
+            $customerId = $this->generateGuestCustomerId($normalizedEmail);
         }
 
         /* @var CustomerInterface $customer */
