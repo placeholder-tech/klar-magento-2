@@ -20,6 +20,7 @@ class Config extends AbstractHelper
 
     private const CONFIG_PATH_SEND_EMAIL = 'klar/integration/send_email';
     private const CONFIG_PATH_PUBLIC_KEY = 'klar/integration/public_key';
+    private const CONFIG_PATH_BATCH_SIZE = 'klar/integration/batch_size';
     private const CONFIG_PATH_WEIGHT_UNIT = 'general/locale/weight_unit';
 
     private Encrypted $encrypted;
@@ -119,6 +120,20 @@ class Config extends AbstractHelper
     public function getApiVersion(): ?string
     {
         return $this->scopeConfig->getValue(self::CONFIG_PATH_API_VERSION);
+    }
+
+    /**
+     * Get batch size for API uploads.
+     *
+     * @return int
+     */
+    public function getBatchSize(): int
+    {
+        $value = (int)$this->scopeConfig->getValue(self::CONFIG_PATH_BATCH_SIZE);
+        if ($value < 1 || $value > 1000) {
+            return 250;
+        }
+        return $value;
     }
 
     /**

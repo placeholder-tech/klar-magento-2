@@ -24,7 +24,11 @@ class KlarOrderGridPlugin
             $subject->getSelect()->joinLeft(
                 $tableName,
                 $tableName . '.order_id = main_table.' . $primaryKey,
-                ['klar_sync' => 'sync']
+                [
+                    'klar_sync' => 'sync',
+                    'klar_synced_at' => 'synced_at',
+                    'klar_error' => 'error_message',
+                ]
             );
         }
 

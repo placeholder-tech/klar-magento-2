@@ -1,0 +1,175 @@
+<?php
+/** @var \PlaceholderTech\Klar\Block\Adminhtml\System\Config\SyncButton $block */
+/** @var \Magento\Framework\View\Helper\SecureHtmlRenderer $secureRenderer */
+$totalOrders = $block->getTotalOrderCount();
+$failedOrders = $block->getFailedOrderCount();
+?>
+
+<div id="klar-sync-panel" style="display:flex;flex-direction:column;gap:12px;max-width:600px;">
+    <!-- Sync All -->
+    <div style="display:flex;align-items:center;gap:8px;">
+        <button id="klar_sync_all" type="button" class="action-default scalable"
+                title="<?= $block->escapeHtmlAttr(__('Sync All Orders')) ?>">
+            <span><?= $block->escapeHtml(__('Sync All Orders')) ?></span>
+        </button>
+        <span style="color:#666;font-size:12px;">(<?= (int)$totalOrders ?> orders)</span>
+    </div>
+
+    <!-- Date Range Sync -->
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <input type="date" id="klar_sync_from" style="padding:4px 8px;border:1px solid #ccc;border-radius:4px;" />
+        <span>&ndash;</span>
+        <input type="date" id="klar_sync_to" style="padding:4px 8px;border:1px solid #ccc;border-radius:4px;" />
+        <button id="klar_sync_range" type="button" class="action-default scalable"
+                title="<?= $block->escapeHtmlAttr(__('Sync Date Range')) ?>">
+            <span><?= $block->escapeHtml(__('Sync Date Range')) ?></span>
+        </button>
+    </div>
+
+    <!-- Single Order Sync -->
+    <div style="display:flex;align-items:center;gap:8px;">
+        <input type="text" id="klar_sync_order_id" placeholder="<?= $block->escapeHtmlAttr(__('Order ID (entity_id)')) ?>"
+               style="padding:4px 8px;border:1px solid #ccc;border-radius:4px;width:180px;" />
+        <button id="klar_sync_order" type="button" class="action-default scalable"
+                title="<?= $block->escapeHtmlAttr(__('Sync Order')) ?>">
+            <span><?= $block->escapeHtml(__('Sync Order')) ?></span>
+        </button>
+        <button id="klar_preview_order" type="button" class="action-default scalable"
+                title="<?= $block->escapeHtmlAttr(__('Preview JSON')) ?>">
+            <span><?= $block->escapeHtml(__('Preview JSON')) ?></span>
+        </button>
+    </div>
+
+    <!-- Re-sync Failed -->
+    <?php if ($failedOrders > 0): ?>
+    <div style="display:flex;align-items:center;gap:8px;">
+        <button id="klar_sync_failed" type="button" class="action-default scalable"
+                title="<?= $block->escapeHtmlAttr(__('Re-sync Failed Orders')) ?>">
+            <span><?= $block->escapeHtml(__('Re-sync Failed Orders')) ?></span>
+        </button>
+        <span style="color:#cc0000;font-size:12px;">(<?= (int)$failedOrders ?> failed)</span>
+    </div>
+    <?php endif; ?>
+
+    <!-- Status message -->
+    <div id="klar_sync_message" style="display:none;padding:8px 12px;border-radius:4px;font-size:13px;"></div>
+
+    <!-- JSON Preview area -->
+    <div id="klar_preview_area" style="display:none;">
+        <pre id="klar_preview_json" style="background:#f5f5f5;border:1px solid #ddd;border-radius:4px;padding:12px;max-height:400px;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-all;"></pre>
+    </div>
+</div>
+
+<?php
+$scriptString = <<<script
+require(['jquery'], function(jQuery) {
+
+    function showMessage(msg, isError) {
+        var el = jQuery('#klar_sync_message');
+        el.text(msg)
+          .css({
+              'display': 'block',
+              'background': isError ? '#fff0f0' : '#f0fff0',
+              'border': '1px solid ' + (isError ? '#cc0000' : '#006400'),
+              'color': isError ? '#cc0000' : '#006400'
+          });
+        setTimeout(function() { el.fadeOut(); }, 8000);
+    }
+
+    function syncRequest(url, data, btn) {
+        var originalLabel = btn.find('span').text();
+        btn.find('span').text('Processing...');
+        btn.prop('disabled', true);
+
+        jQuery.ajax({
+            url: url,
+            type: 'POST',
+            dataType: 'json',
+            data: jQuery.extend({form_key: window.FORM_KEY}, data || {}),
+            success: function(response) {
+                showMessage(response.message || 'Done', !response.success);
+            },
+            error: function(xhr) {
+                showMessage('Request failed: ' + xhr.statusText, true);
+            },
+            complete: function() {
+                btn.find('span').text(originalLabel);
+                btn.prop('disabled', false);
+            }
+        });
+    }
+
+    // Sync All
+    jQuery('#klar_sync_all').click(function() {
+        if (!confirm('This will re-sync all {$totalOrders} orders to Klar. Are you sure?')) return;
+        syncRequest('{$block->escapeJs($block->getSyncAllUrl())}', {}, jQuery(this));
+    });
+
+    // Sync Date Range
+    jQuery('#klar_sync_range').click(function() {
+        var from = jQuery('#klar_sync_from').val();
+        var to = jQuery('#klar_sync_to').val();
+        if (!from && !to) {
+            showMessage('Please select at least a start or end date.', true);
+            return;
+        }
+        syncRequest('{$block->escapeJs($block->getSyncRangeUrl())}', {from: from, to: to}, jQuery(this));
+    });
+
+    // Sync Single Order
+    jQuery('#klar_sync_order').click(function() {
+        var orderId = jQuery('#klar_sync_order_id').val().trim();
+        if (!orderId) {
+            showMessage('Please enter an order ID.', true);
+            return;
+        }
+        syncRequest('{$block->escapeJs($block->getSyncOrderUrl())}', {order_id: orderId}, jQuery(this));
+    });
+
+    // Re-sync Failed
+    jQuery('#klar_sync_failed').click(function() {
+        syncRequest('{$block->escapeJs($block->getSyncFailedUrl())}', {}, jQuery(this));
+    });
+
+    // Preview JSON
+    jQuery('#klar_preview_order').click(function() {
+        var orderId = jQuery('#klar_sync_order_id').val().trim();
+        if (!orderId) {
+            showMessage('Please enter an order ID.', true);
+            return;
+        }
+        var btn = jQuery(this);
+        btn.find('span').text('Loading...');
+        btn.prop('disabled', true);
+
+        jQuery.ajax({
+            url: '{$block->escapeJs($block->getPreviewUrl())}',
+            type: 'POST',
+            dataType: 'json',
+            data: {form_key: window.FORM_KEY, order_id: orderId},
+            success: function(response) {
+                if (response.success) {
+                    try {
+                        var formatted = JSON.stringify(JSON.parse(response.json), null, 2);
+                        jQuery('#klar_preview_json').text(formatted);
+                    } catch(e) {
+                        jQuery('#klar_preview_json').text(response.json);
+                    }
+                    jQuery('#klar_preview_area').show();
+                } else {
+                    showMessage(response.message || 'Preview failed', true);
+                }
+            },
+            error: function(xhr) {
+                showMessage('Request failed: ' + xhr.statusText, true);
+            },
+            complete: function() {
+                btn.find('span').text('Preview JSON');
+                btn.prop('disabled', false);
+            }
+        });
+    });
+});
+script;
+?>
+<?= /* @noEscape */ $secureRenderer->renderTag('script', [], $scriptString, false) ?>

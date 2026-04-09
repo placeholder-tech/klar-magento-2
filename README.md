@@ -1,12 +1,29 @@
 # Magento 2 Klar Integration Module
 
+## TL;DR — How It Works
+
+This module sends your Magento order data to [Klar](https://www.getklar.com) for analytics.
+
+**After installation, you need to know two things:**
+
+1. **New orders are synced automatically.** Every time an order is placed, updated, shipped, or refunded in Magento, it is automatically sent to Klar via a background queue. No manual action needed.
+
+2. **Historical orders are NOT synced automatically.** The module only listens for order changes going forward. To import your existing order history into Klar, you must trigger a one-time sync — either from the admin panel (Stores > Configuration > Sales > Klar > "Sync All Orders") or via CLI:
+   ```
+   bin/magento klar:order all
+   ```
+
+### Common Caveats
+
+- **Cron must be running.** Order sync happens asynchronously via Magento's message queue. If cron is not configured, orders will be queued but never sent. Make sure `klar.order.synchronization` is in your `env.php` `cron_consumers_runner` config (see Installation step 6).
+- **"Sync All" re-sends everything.** The Klar API is idempotent (same order ID = update, not duplicate), so re-syncing is safe but puts load on your server. Use date range sync for large stores.
+- **Check the Klar column in Sales > Orders.** It shows when each order was last synced. Empty = never synced, "Failed" = sync error. You can re-sync failed orders from the config page.
+- **Logs are in `var/log/klar/klar.log`.** Check this file if orders are failing to sync — it includes the Klar API error messages.
+- **The API token comes from Klar.** In your Klar account, go to Settings > Store Configurator > Your Store > Data Sources, connect a "Klar Api" data source, and copy the token.
+
 ## Overview
 
-The Magento 2 Klar integration module is a powerful tool designed to streamline the process of integrating the Klar
-business intelligence platform into your Magento 2 store. With this module, you can easily connect your store to Klar
-and centralize your data from a variety of sources, including your eCommerce platform, payment providers, and
-advertising channels. Once your data is centralized, you can use Klar's powerful reporting and analytics tools to gain
-deep insights into your store's performance, from customer behavior and sales trends to advertising ROI and much more.
+This module integrates your Magento 2 store with the [Klar](https://www.getklar.com) business intelligence platform. It sends order data (line items, taxes, discounts, shipping, customer info, refunds) to the Klar Orders API in real-time and supports bulk CLI and admin UI export.
 
 ## Compatibility
 
@@ -171,15 +188,15 @@ The token can be found in Klar in the **Klar Api** data source created for this 
 
 Configure whether you want to send the customer's email along with the order info to Klar. Otherwise the hashed email address will be submitted.
 
-#### Public Key
+#### Salt for E-Mail Hash
 
-The Public Key used to hash the customer's email address. Please contact Klar's support to receive your public key.  
+The salt used to hash the customer's email address. Contact Klar's support to receive your salt.
 
 ## Usage
 
-After the successful installation this module sends all orders to Klar after they've been placed in the Magento store. 
+After installation, new and updated orders are automatically synced to Klar via a background queue.
 
-If you want to re-export certain orders or export the whole order history you can use the following CLI commands:
+To import your historical order data, use the admin panel (Stores > Configuration > Sales > Klar) or the CLI commands below:
 
 ### CLI Command
 

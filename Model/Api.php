@@ -22,6 +22,7 @@ class Api implements ApiInterface
     private string $requestData;
     private Json $jsonSerializer;
     private OrderCollectionFactory $orderCollectionFactory;
+    private string $lastError = '';
 
     /**
      * Api constructor.
@@ -98,6 +99,11 @@ class Api implements ApiInterface
         return $this->json($salesOrders);
     }
 
+    public function getLastError(): string
+    {
+        return $this->lastError;
+    }
+
     public function getJsonDataForOrders(array $ids): string
     {
         $salesOrders = $this->getOrders($ids);
@@ -127,7 +133,7 @@ class Api implements ApiInterface
 
             $this->requestData = $this->jsonSerializer->serialize($items);
         } catch (Exception $e) {
-            $this->logger->info(__('Error building params: %1', $e->getMessage()));
+            $this->logger->error(__('Error building order payload: %1', $e->getMessage()));
         }
     }
 
@@ -178,14 +184,14 @@ class Api implements ApiInterface
      */
     private function getRequestUrl(string $path, bool $includeVersion = false): string
     {
-        if ($includeVersion) {
-            $baseUrl = $this->config->getApiUrl();
-            $version = $this->config->getApiVersion();
+        $baseUrl = rtrim($this->config->getApiUrl(), "/");
 
-            return rtrim($baseUrl, "/") . '/' . $version . $path;
+        if ($includeVersion) {
+            $version = $this->config->getApiVersion();
+            return $baseUrl . '/' . $version . $path . '?newErrors=true&failedOrderIds=true';
         }
 
-        return $this->config->getApiUrl() . $path . '?newErrors=true';
+        return $baseUrl . $path . '?newErrors=true';
     }
 
     /**
@@ -300,22 +306,48 @@ class Api implements ApiInterface
     private function json(array $salesOrders): int
     {
         $result = 0;
-        $orderIds = implode(', ', array_keys($salesOrders));
-        $this->logger->info(__('Sending orders "#%1".', $orderIds));
+        $orderSummaries = [];
+        foreach ($salesOrders as $order) {
+            $orderSummaries[] = $order->getIncrementId() . ' (id:' . $order->getEntityId() . ')';
+        }
+        $orderLabel = implode(', ', $orderSummaries);
+        $batchCount = count($salesOrders);
+
+        $this->logger->info(__('Sending %1 order(s): %2', $batchCount, $orderLabel));
 
         $this->getCurlClient()->post(
             $this->getRequestUrl(self::ORDERS_JSON_PATH, true),
             $this->requestData
         );
 
+        $this->lastError = '';
         $body = $this->getCurlBody();
         if (isset($body['status']) && $body['status'] === self::ORDER_STATUS_VALID) {
-            $this->logger->info(__('Orders "#%1" successfully sent to Klar.', $orderIds));
+            $this->logger->info(__('OK — %1 order(s) accepted by Klar: %2', $batchCount, $orderLabel));
             $result = count($salesOrders);
         } elseif (isset($body['status']) && $body['status'] === self::ORDER_STATUS_INVALID) {
-            $this->logger->error(__('Failed to validate orders "#%1".', json_encode($body)));
+            $errorMessages = [];
+            $this->logger->error(__('FAILED — %1 order(s) rejected by Klar: %2', $batchCount, $orderLabel));
+            if (isset($body['orderIds']) && is_array($body['orderIds'])) {
+                $this->logger->error(__('Failed order IDs: %1', implode(', ', $body['orderIds'])));
+            }
+            if (isset($body['errors']) && is_array($body['errors'])) {
+                foreach ($body['errors'] as $error) {
+                    if (is_string($error)) {
+                        $errorMessages[] = $error;
+                        $this->logger->error($error);
+                    } elseif (is_array($error) && isset($error['message'])) {
+                        $msg = ($error['key'] ?? 'unknown') . ': ' . $error['message'];
+                        $errorMessages[] = $msg;
+                        $this->logger->error($msg);
+                    }
+                }
+            }
+            $this->lastError = implode(' | ', $errorMessages) ?: 'Validation failed';
         } else {
-            $this->logger->info(__('Failed to send orders "#%1" with statuscode "#%2".', $orderIds, json_encode($this->getStatus())));
+            $httpStatus = $this->getCurlClient()->getStatus();
+            $this->lastError = 'HTTP ' . $httpStatus;
+            $this->logger->error(__('FAILED — Could not reach Klar API. HTTP %1. Orders: %2', $httpStatus, $orderLabel));
         }
 
         return $result;

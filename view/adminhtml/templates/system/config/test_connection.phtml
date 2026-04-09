@@ -1,0 +1,43 @@
+<?php
+/** @var \PlaceholderTech\Klar\Block\Adminhtml\System\Config\TestConnectionButton $block */
+/** @var \Magento\Framework\View\Helper\SecureHtmlRenderer $secureRenderer */
+?>
+
+<?php
+$scriptString = <<<script
+require(['jquery'], function(jQuery) {
+    jQuery('#klar_test_connection').click(function () {
+        var btn = jQuery(this);
+        var originalLabel = btn.find('span').text();
+        btn.find('span').text('Testing...');
+        btn.prop('disabled', true);
+
+        jQuery.ajax({
+            url: '{$block->escapeJs($block->getAjaxUrl())}',
+            type: 'POST',
+            dataType: 'json',
+            data: {form_key: window.FORM_KEY},
+            success: function(response) {
+                if (response.success) {
+                    btn.find('span').text('Connected').css('color', '#006400');
+                } else {
+                    btn.find('span').text('Failed: ' + (response.message || 'Unknown error')).css('color', '#cc0000');
+                }
+            },
+            error: function() {
+                btn.find('span').text('Request failed').css('color', '#cc0000');
+            },
+            complete: function() {
+                btn.prop('disabled', false);
+                setTimeout(function() {
+                    btn.find('span').text(originalLabel).css('color', '');
+                }, 5000);
+            }
+        });
+    });
+});
+script;
+?>
+<?= /* @noEscape */ $secureRenderer->renderTag('script', [], $scriptString, false) ?>
+
+<?= $block->getButtonHtml() ?>

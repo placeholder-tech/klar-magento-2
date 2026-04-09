@@ -4,7 +4,9 @@
     <table name="klar_order_attributes" resource="default" engine="innodb" comment="Klar Attributes Table">
         <column xsi:type="int" name="order_id" unsigned="true" nullable="false"
                 comment="Order ID"/>
-        <column xsi:type="int" name="sync" unsigned="true" nullable="false" comment="Block Title"/>
+        <column xsi:type="int" name="sync" unsigned="true" nullable="false" comment="Sync Status"/>
+        <column xsi:type="timestamp" name="synced_at" nullable="true" comment="Last Sync Timestamp"/>
+        <column xsi:type="text" name="error_message" nullable="true" comment="Last Sync Error Message"/>
         <constraint xsi:type="primary" referenceId="PRIMARY">
             <column name="order_id"/>
         </constraint>
