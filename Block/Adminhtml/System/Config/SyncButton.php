@@ -3,54 +3,79 @@ declare(strict_types=1);
 
 namespace PlaceholderTech\Klar\Block\Adminhtml\System\Config;
 
-use Magento\Backend\Block\Widget\Button;
+use Magento\Backend\Block\Template\Context;
 use Magento\Config\Block\System\Config\Form\Field;
+use Magento\Framework\App\ResourceConnection;
 use Magento\Framework\Data\Form\Element\AbstractElement;
+use Magento\Framework\View\Helper\SecureHtmlRenderer;
 
 class SyncButton extends Field
 {
-    /**
-     * Path to template file in theme.
-     *
-     * @var string
-     */
-    protected $_template = 'PlaceholderTech_Klar::system/config/sync_button.phtml';
+    protected $_template = 'PlaceholderTech_Klar::system/config/sync_panel.phtml';
 
-    /**
-     * {@inheritDoc}
-     */
+    private ResourceConnection $resourceConnection;
+
+    public function __construct(
+        Context $context,
+        ResourceConnection $resourceConnection,
+        array $data = [],
+        ?SecureHtmlRenderer $secureRenderer = null
+    ) {
+        parent::__construct($context, $data, $secureRenderer);
+        $this->resourceConnection = $resourceConnection;
+    }
+
     public function render(AbstractElement $element)
     {
         $element->unsScope()->unsCanUseWebsiteValue()->unsCanUseDefaultValue();
         return parent::render($element);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     protected function _getElementHtml(AbstractElement $element)
     {
         return $this->_toHtml();
     }
 
-    /**
-     * @return string
-     */
-    public function getAjaxUrl()
+    public function getSyncAllUrl(): string
     {
         return $this->getUrl('klar/sync/ajax');
     }
 
-    /**
-     * @return string
-     * @throws \Magento\Framework\Exception\LocalizedException
-     */
-    public function getButtonHtml()
+    public function getSyncRangeUrl(): string
     {
-        $button = $this->getLayout()
-            ->createBlock(Button::class)
-            ->setData(['id' => 'sync_now', 'label' => __('Sync Now'),]);
+        return $this->getUrl('klar/sync/syncRange');
+    }
 
-        return $button->toHtml();
+    public function getSyncOrderUrl(): string
+    {
+        return $this->getUrl('klar/sync/syncOrder');
+    }
+
+    public function getSyncFailedUrl(): string
+    {
+        return $this->getUrl('klar/sync/syncFailed');
+    }
+
+    public function getPreviewUrl(): string
+    {
+        return $this->getUrl('klar/sync/preview');
+    }
+
+    public function getTotalOrderCount(): int
+    {
+        $connection = $this->resourceConnection->getConnection();
+        return (int)$connection->fetchOne(
+            $connection->select()->from($connection->getTableName('sales_order'), ['COUNT(*)'])
+        );
+    }
+
+    public function getFailedOrderCount(): int
+    {
+        $connection = $this->resourceConnection->getConnection();
+        return (int)$connection->fetchOne(
+            $connection->select()
+                ->from($connection->getTableName('klar_order_attributes'), ['COUNT(*)'])
+                ->where('sync = 0')
+        );
     }
 }

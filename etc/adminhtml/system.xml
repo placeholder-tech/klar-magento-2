@@ -10,6 +10,8 @@
             <group id="integration" translate="label" sortOrder="10" showInDefault="1" showInWebsite="0"
                    showInStore="0">
                 <label>Integration</label>
+                <frontend_model>PlaceholderTech\Klar\Block\Adminhtml\System\Config\IntegrationFieldset</frontend_model>
+                <comment><![CDATA[Configure your Klar integration settings below.]]></comment>
 
                 <field id="enabled" translate="label" sortOrder="10" showInDefault="1" showInWebsite="0" showInStore="0"
                        type="select">
@@ -59,10 +61,28 @@
 
                 <field id="public_key" translate="label comment" type="obscure" sortOrder="32" showInDefault="1"
                        showInWebsite="0" showInStore="0">
-                    <label>Public Key</label>
-                    <comment><![CDATA[Public Key used for email hashing.]]></comment>
+                    <label>Salt for E-Mail Hash</label>
+                    <comment><![CDATA[Salt used for hashing the customer's email address. Contact Klar support to receive your salt.]]></comment>
                     <validate>required-entry no-whitespace</validate>
                     <backend_model>Magento\Config\Model\Config\Backend\Encrypted</backend_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+
+                <field id="batch_size" translate="label comment" sortOrder="33" showInDefault="1" showInWebsite="0" showInStore="0"
+                       type="text">
+                    <label>Batch Size</label>
+                    <comment><![CDATA[Number of orders per API batch (1-1000). Default: 250.]]></comment>
+                    <validate>required-entry validate-digits validate-digits-range digits-range-1-1000</validate>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+
+                <field id="test_connection" translate="label" type="button" sortOrder="34" showInDefault="1">
+                    <label>Connection</label>
+                    <frontend_model>PlaceholderTech\Klar\Block\Adminhtml\System\Config\TestConnectionButton</frontend_model>
                     <depends>
                         <field id="enabled">1</field>
                     </depends>
@@ -78,9 +98,17 @@
 
                 <field id="orders_status" translate="label comment" type="obscure" sortOrder="40" showInDefault="1"
                        showInWebsite="0" showInStore="0">
-                    <label>Orders Status</label>
-                    <comment><![CDATA[Orders status information.]]></comment>
+                    <label>Sync Status</label>
+                    <comment><![CDATA[Local synchronization status overview.]]></comment>
                     <frontend_model>PlaceholderTech\Klar\Block\Adminhtml\System\Config\OrdersStatus</frontend_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                <field id="log_viewer" translate="label" type="text" sortOrder="50" showInDefault="1"
+                       showInWebsite="0" showInStore="0">
+                    <label>Recent Log</label>
+                    <frontend_model>PlaceholderTech\Klar\Block\Adminhtml\System\Config\LogViewer</frontend_model>
                     <depends>
                         <field id="enabled">1</field>
                     </depends>

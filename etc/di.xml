@@ -14,7 +14,7 @@
     <virtualType name="KlarLogger" type="Magento\Framework\Logger\Monolog">
         <arguments>
             <argument name="handlers" xsi:type="array">
-                <item name="error" xsi:type="object">PlaceholderTech\Klar\Logger\Handler\InfoHandler</item>
+                <item name="error" xsi:type="object">PlaceholderTech\Klar\Logger\Handler\KlarHandler</item>
             </argument>
         </arguments>
     </virtualType>

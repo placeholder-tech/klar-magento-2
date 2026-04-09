@@ -16,11 +16,6 @@ class OrderQueue
     private Json $jsonSerializer;
     private AdapterInterface $connection;
 
-    /**
-     * @param Api $api
-     * @param Json $jsonSerializer
-     * @param ResourceConnection $resourceConnection
-     */
     public function __construct(
         Api $api,
         Json $jsonSerializer,
@@ -31,11 +26,6 @@ class OrderQueue
         $this->connection = $resourceConnection->getConnection();
     }
 
-    /**
-     * @param OperationInterface $operation
-     * @return void
-     * @throws Exception
-     */
     public function process(OperationInterface $operation): void
     {
         $serializedData = $operation->getSerializedData();
@@ -43,17 +33,23 @@ class OrderQueue
 
         try {
             $result = (bool) $this->api->send($ids);
-            $resultValue = (int)$result;
-
-            $values = [];
-            foreach ($ids as $id) {
-                $values[] = "({$id}, {$resultValue})";
-            }
-            $values = implode(',', $values);
+            $syncValue = (int)$result;
+            $errorMessage = $result ? null : $this->api->getLastError();
+            $now = (new \DateTime())->format('Y-m-d H:i:s');
 
             $tableName = $this->connection->getTableName('klar_order_attributes');
-            $query = "INSERT INTO {$tableName} (order_id, sync) VALUES {$values} ON DUPLICATE KEY UPDATE sync = {$resultValue}";
-            $this->connection->query($query);
+            foreach ($ids as $id) {
+                $this->connection->insertOnDuplicate(
+                    $tableName,
+                    [
+                        'order_id' => (int)$id,
+                        'sync' => $syncValue,
+                        'synced_at' => $now,
+                        'error_message' => $errorMessage,
+                    ],
+                    ['sync', 'synced_at', 'error_message']
+                );
+            }
         } catch (Exception $exception) {
             $result = false;
         }

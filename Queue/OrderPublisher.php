@@ -4,8 +4,9 @@ declare(strict_types=1);
 namespace PlaceholderTech\Klar\Queue;
 
 use DateTime;
-use PlaceholderTech\Klar\Model\Api;
+use PlaceholderTech\Klar\Helper\Config;
 use Magento\AsynchronousOperations\Api\Data\OperationInterfaceFactory;
+
 use Magento\Framework\App\ResourceConnection;
 use Magento\Framework\DB\Adapter\AdapterInterface;
 use Magento\Framework\MessageQueue\PublisherInterface;
@@ -18,23 +19,20 @@ class OrderPublisher
     private PublisherInterface $publisher;
     private Json $jsonSerializer;
     private AdapterInterface $connection;
+    private Config $config;
 
-    /**
-     * @param PublisherInterface $publisher
-     * @param OperationInterfaceFactory $operationFactory
-     * @param Json $jsonSerializer
-     * @param ResourceConnection $resourceConnection
-     */
     public function __construct(
         PublisherInterface $publisher,
         OperationInterfaceFactory $operationFactory,
         Json $jsonSerializer,
-        ResourceConnection $resourceConnection
+        ResourceConnection $resourceConnection,
+        Config $config
     ) {
         $this->operationFactory = $operationFactory;
         $this->publisher = $publisher;
         $this->jsonSerializer = $jsonSerializer;
         $this->connection = $resourceConnection->getConnection();
+        $this->config = $config;
     }
 
     /**
@@ -66,7 +64,7 @@ class OrderPublisher
      */
     public function publish(array $ids): void
     {
-        $chunks = array_chunk($ids, Api::BATCH_SIZE);
+        $chunks = array_chunk($ids, $this->config->getBatchSize());
         foreach ($chunks as $chunk) {
             $operation = $this->operationFactory->create();
             $operation->setSerializedData(
