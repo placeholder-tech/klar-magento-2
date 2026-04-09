@@ -28,6 +28,7 @@
         <arguments>
             <argument name="commands" xsi:type="array">
                 <item name="KlarOrder" xsi:type="object">PlaceholderTech\Klar\Command\Order</item>
+                <item name="KlarGenerateTestData" xsi:type="object">PlaceholderTech\Klar\Command\GenerateTestData</item>
             </argument>
         </arguments>
     </type>
