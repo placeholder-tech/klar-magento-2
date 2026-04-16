@@ -39,4 +39,24 @@
         <plugin name="klar_order_grid_plugin"
                 type="PlaceholderTech\Klar\Plugin\KlarOrderGridPlugin"/>
     </type>
+
+    <!-- Klar field mapping config -->
+    <type name="PlaceholderTech\Klar\Model\Config\FieldMapping\Reader">
+        <arguments>
+            <argument name="fileName" xsi:type="string">klar_field_mapping.xml</argument>
+            <argument name="converter" xsi:type="object">PlaceholderTech\Klar\Model\Config\FieldMapping\Converter</argument>
+            <argument name="schemaLocator" xsi:type="object">PlaceholderTech\Klar\Model\Config\FieldMapping\SchemaLocator</argument>
+        </arguments>
+    </type>
+    <type name="PlaceholderTech\Klar\Model\Config\FieldMapping\Data">
+        <arguments>
+            <argument name="reader" xsi:type="object">PlaceholderTech\Klar\Model\Config\FieldMapping\Reader</argument>
+            <argument name="cacheId" xsi:type="string">klar_field_mapping</argument>
+        </arguments>
+    </type>
+    <type name="PlaceholderTech\Klar\Model\AttributeValueResolver">
+        <arguments>
+            <argument name="logger" xsi:type="object">KlarLogger</argument>
+        </arguments>
+    </type>
 </config>

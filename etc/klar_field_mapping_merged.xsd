@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+
+    <xs:element name="config">
+        <xs:complexType>
+            <xs:all>
+                <xs:element name="line_item" type="fieldGroupType" minOccurs="0"/>
+                <xs:element name="customer" type="fieldGroupType" minOccurs="0"/>
+                <xs:element name="optional_identifiers" type="fieldGroupType" minOccurs="0"/>
+                <xs:element name="order" type="fieldGroupType" minOccurs="0"/>
+            </xs:all>
+        </xs:complexType>
+
+        <xs:unique name="uniqueLineItemFieldName">
+            <xs:selector xpath="line_item/field"/>
+            <xs:field xpath="@name"/>
+        </xs:unique>
+        <xs:unique name="uniqueCustomerFieldName">
+            <xs:selector xpath="customer/field"/>
+            <xs:field xpath="@name"/>
+        </xs:unique>
+        <xs:unique name="uniqueOptionalIdentifiersFieldName">
+            <xs:selector xpath="optional_identifiers/field"/>
+            <xs:field xpath="@name"/>
+        </xs:unique>
+        <xs:unique name="uniqueOrderFieldName">
+            <xs:selector xpath="order/field"/>
+            <xs:field xpath="@name"/>
+        </xs:unique>
+    </xs:element>
+
+    <xs:complexType name="fieldGroupType">
+        <xs:sequence>
+            <xs:element name="field" type="fieldType" minOccurs="0" maxOccurs="unbounded"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="fieldType">
+        <xs:attribute name="name" type="xs:string" use="required"/>
+        <xs:attribute name="source" type="sourceType" use="required"/>
+        <xs:attribute name="code" type="xs:string" use="optional"/>
+        <xs:attribute name="type" type="valueType" use="optional" default="text"/>
+        <xs:attribute name="prefix" type="xs:string" use="optional"/>
+        <xs:attribute name="separator" type="xs:string" use="optional"/>
+    </xs:complexType>
+
+    <xs:simpleType name="sourceType">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="product_attribute"/>
+            <xs:enumeration value="customer_attribute"/>
+            <xs:enumeration value="order_attribute"/>
+            <xs:enumeration value="customer_group"/>
+            <xs:enumeration value="category_top"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <xs:simpleType name="valueType">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="text"/>
+            <xs:enumeration value="label"/>
+            <xs:enumeration value="multiselect_labels"/>
+            <xs:enumeration value="joined_labels"/>
+            <xs:enumeration value="boolean"/>
+            <xs:enumeration value="int"/>
+            <xs:enumeration value="float"/>
+            <xs:enumeration value="prefixed_id"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+</xs:schema>

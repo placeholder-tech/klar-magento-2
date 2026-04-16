@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:PlaceholderTech_Klar:etc/klar_field_mapping.xsd">
+
+    <line_item>
+        <!-- productBrand: Magento "manufacturer" attribute (uses dropdown label) -->
+        <field name="productBrand" source="product_attribute" code="manufacturer" type="label"/>
+        <!-- productCollection: highest-level category name -->
+        <field name="productCollection" source="category_top"/>
+    </line_item>
+
+    <customer>
+        <!-- tags: Magento customer group ID, prefixed -->
+        <field name="tags" source="customer_group" type="prefixed_id" prefix="customerGroupId-"/>
+    </customer>
+
+</config>

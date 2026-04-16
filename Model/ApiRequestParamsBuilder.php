@@ -16,6 +16,7 @@ use PlaceholderTech\Klar\Model\Builders\LineItemsBuilder;
 use PlaceholderTech\Klar\Model\Builders\RefundedLineItemsBuilder;
 use PlaceholderTech\Klar\Model\Builders\ShippingBuilder;
 use PlaceholderTech\Klar\Model\Builders\OptionalIdentifiersBuilder;
+use PlaceholderTech\Klar\Model\AttributeValueResolver;
 use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Framework\Intl\DateTimeFactory;
 use Magento\Sales\Api\Data\InvoiceInterface;
@@ -45,20 +46,8 @@ class ApiRequestParamsBuilder extends AbstractApiRequestParamsBuilder
     private CustomerBuilder $customerBuilder;
     private OptionalIdentifiersInterfaceFactory $optionalIdentifiersFactory;
     private OptionalIdentifiersBuilder $optionalIdentifiersBuilder;
+    private AttributeValueResolver $attributeResolver;
 
-    /**
-     * ParamsBuilder constructor.
-     *
-     * @param DateTimeFactory $dateTimeFactory
-     * @param OrderInterfaceFactory $orderFactory
-     * @param StoreManagerInterface $storeManager
-     * @param LineItemsBuilder $lineItemsBuilder
-     * @param RefundedLineItemsBuilder $refundedLineItemsBuilder
-     * @param ShippingBuilder $shippingBuilder
-     * @param CustomerBuilder $customerBuilder
-     * @param OptionalIdentifiersInterfaceFactory $optionalIdentifiersFactory
-     * @param OptionalIdentifiersBuilder $optionalIdentifiersBuilder
-     */
     public function __construct(
         DateTimeFactory $dateTimeFactory,
         OrderInterfaceFactory $orderFactory,
@@ -68,7 +57,8 @@ class ApiRequestParamsBuilder extends AbstractApiRequestParamsBuilder
         ShippingBuilder $shippingBuilder,
         CustomerBuilder $customerBuilder,
         OptionalIdentifiersInterfaceFactory $optionalIdentifiersFactory,
-        OptionalIdentifiersBuilder $optionalIdentifiersBuilder
+        OptionalIdentifiersBuilder $optionalIdentifiersBuilder,
+        AttributeValueResolver $attributeResolver
     ) {
         parent::__construct($dateTimeFactory);
         $this->orderFactory = $orderFactory;
@@ -79,6 +69,7 @@ class ApiRequestParamsBuilder extends AbstractApiRequestParamsBuilder
         $this->customerBuilder = $customerBuilder;
         $this->optionalIdentifiersFactory = $optionalIdentifiersFactory;
         $this->optionalIdentifiersBuilder = $optionalIdentifiersBuilder;
+        $this->attributeResolver = $attributeResolver;
     }
 
     /**
@@ -123,7 +114,17 @@ class ApiRequestParamsBuilder extends AbstractApiRequestParamsBuilder
         $order->setCustomer($this->customerBuilder->buildFromSalesOrder($salesOrder));
         $order->setOptionalIdentifiers($this->optionalIdentifiersBuilder->buildFromSalesOrder($salesOrder));
 
-        return $this->snakeToCamel($order->toArray());
+        $orderArray = $this->snakeToCamel($order->toArray());
+
+        // Merge in configurable order-level field mappings (tags, etc.)
+        $mappedFields = $this->attributeResolver->resolveAll('order', [
+            'order' => $salesOrder,
+        ]);
+        foreach ($mappedFields as $name => $value) {
+            $orderArray[$name] = $value;
+        }
+
+        return $orderArray;
     }
 
     /**
