@@ -8,10 +8,9 @@ use PlaceholderTech\Klar\Api\Data\LineItemInterface;
 use PlaceholderTech\Klar\Api\Data\LineItemInterfaceFactory;
 use PlaceholderTech\Klar\Helper\Config;
 use PlaceholderTech\Klar\Model\AbstractApiRequestParamsBuilder;
+use PlaceholderTech\Klar\Model\AttributeValueResolver;
 use Magento\Bundle\Model\Product\Type as BundleProductType;
-use Magento\Catalog\Api\CategoryRepositoryInterface;
 use Magento\Catalog\Model\Product;
-use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Framework\Intl\DateTimeFactory;
 use Magento\Sales\Api\Data\OrderInterface as SalesOrderInterface;
 use Magento\Sales\Api\Data\OrderItemInterface as SalesOrderItemInterface;
@@ -19,35 +18,25 @@ use Magento\Sales\Api\Data\OrderItemInterface as SalesOrderItemInterface;
 class LineItemsBuilder extends AbstractApiRequestParamsBuilder
 {
     private LineItemInterfaceFactory $lineItemFactory;
-    private CategoryRepositoryInterface $categoryRepository;
     private TaxesBuilder $taxesBuilder;
     private Config $config;
     private LineItemDiscountsBuilder $discountsBuilder;
+    private AttributeValueResolver $attributeResolver;
 
-    /**
-     * LineItemsBuilder constructor.
-     *
-     * @param DateTimeFactory $dateTimeFactory
-     * @param LineItemInterfaceFactory $lineItemFactory
-     * @param CategoryRepositoryInterface $categoryRepository
-     * @param TaxesBuilder $taxesBuilder
-     * @param Config $config
-     * @param LineItemDiscountsBuilder $discountsBuilder
-     */
     public function __construct(
         DateTimeFactory $dateTimeFactory,
         LineItemInterfaceFactory $lineItemFactory,
-        CategoryRepositoryInterface $categoryRepository,
         TaxesBuilder $taxesBuilder,
         Config $config,
-        LineItemDiscountsBuilder $discountsBuilder
+        LineItemDiscountsBuilder $discountsBuilder,
+        AttributeValueResolver $attributeResolver
     ) {
         parent::__construct($dateTimeFactory);
         $this->lineItemFactory = $lineItemFactory;
-        $this->categoryRepository = $categoryRepository;
         $this->taxesBuilder = $taxesBuilder;
         $this->config = $config;
         $this->discountsBuilder = $discountsBuilder;
+        $this->attributeResolver = $attributeResolver;
     }
 
     /**
@@ -70,15 +59,8 @@ class LineItemsBuilder extends AbstractApiRequestParamsBuilder
 
             $product = $salesOrderItem->getProduct();
             $productVariant = $this->getProductVariant($salesOrderItem);
-            $productBrand = false;
-            $categoryName = $this->getCategoryName($salesOrderItem);
             $totalBeforeTaxesAndDiscounts = (float)$salesOrderItem->getRowTotalInclTax();
-            $weightInGrams = 0;
-
-            if ($product) {
-                $productBrand = $product->getAttributeText('manufacturer');
-                $weightInGrams = $this->getWeightInGrams($product);
-            }
+            $weightInGrams = $product ? $this->getWeightInGrams($product) : 0;
 
             /* @var LineItemInterface $lineItem */
             $lineItem = $this->lineItemFactory->create();
@@ -90,14 +72,6 @@ class LineItemsBuilder extends AbstractApiRequestParamsBuilder
             if ($productVariant) {
                 $lineItem->setProductVariantName($productVariant['name']);
                 $lineItem->setProductVariantId((string)$productVariant['id']);
-            }
-
-            if ($productBrand) {
-                $lineItem->setProductBrand($productBrand);
-            }
-
-            if ($categoryName) {
-                $lineItem->setProductCollection($categoryName);
             }
 
             $lineItem->setProductCogs($this->getBaseCost($salesOrderItem));
@@ -114,12 +88,24 @@ class LineItemsBuilder extends AbstractApiRequestParamsBuilder
             $totalAfterTaxesAndDiscounts = $this->calculateTotalAfterTaxesAndDiscounts($lineItem, $salesOrderItem);
             $lineItem->setTotalAmountAfterTaxesAndDiscounts($totalAfterTaxesAndDiscounts ?: 0.0);
 
+            $lineItemArray = $this->snakeToCamel($lineItem->toArray());
+
+            // Merge in configurable field mappings (productBrand, productCollection, productTags, ...)
+            $mappedFields = $this->attributeResolver->resolveAll('line_item', [
+                'product' => $product,
+                'order' => $salesOrder,
+                'order_item' => $salesOrderItem,
+            ]);
+            foreach ($mappedFields as $name => $value) {
+                $lineItemArray[$name] = $value;
+            }
+
             // We temporarily use the item ID as a key to easily locate the Bundle product and add its children
             if ($parent) {
                 // At this point parent product is Bundle
-                $lineItems[$parent->getItemId()]['bundledProducts'][] = $this->snakeToCamel($lineItem->toArray());
+                $lineItems[$parent->getItemId()]['bundledProducts'][] = $lineItemArray;
             } else {
-                $lineItems[$salesOrderItem->getItemId()] = $this->snakeToCamel($lineItem->toArray());
+                $lineItems[$salesOrderItem->getItemId()] = $lineItemArray;
             }
         }
 
@@ -167,45 +153,6 @@ class LineItemsBuilder extends AbstractApiRequestParamsBuilder
         }
 
         return false;
-    }
-
-    /**
-     * Get the highest level category name.
-     *
-     * @param SalesOrderItemInterface $salesOrderItem
-     *
-     * @return string|null
-     */
-    private function getCategoryName(SalesOrderItemInterface $salesOrderItem): ?string
-    {
-        $product = $salesOrderItem->getProduct();
-
-        if (!$product) {
-            return null;
-        }
-
-        $categoryIds = $product->getCategoryIds();
-        $categoryNames = [];
-
-        foreach ($categoryIds as $categoryId) {
-            try {
-                $category = $this->categoryRepository->get($categoryId);
-            } catch (NoSuchEntityException $e) {
-                continue;
-            }
-
-            $categoryLevel = $category->getLevel();
-            $categoryName = $category->getName();
-            $categoryNames[$categoryLevel] = $categoryName;
-        }
-
-        if (!empty($categoryNames)) {
-            krsort($categoryNames);
-
-            return reset($categoryNames);
-        }
-
-        return null;
     }
 
     /**

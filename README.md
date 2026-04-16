@@ -192,6 +192,87 @@ Configure whether you want to send the customer's email along with the order inf
 
 The salt used to hash the customer's email address. Contact Klar's support to receive your salt.
 
+## Mapping Magento attributes to Klar fields
+
+Out of the box, the module already wires the following Magento data into the Klar API:
+
+| Klar field          | Magento source                              |
+| ------------------- | ------------------------------------------- |
+| `productBrand`      | Product attribute `manufacturer` (label)    |
+| `productCollection` | Product's highest-level category name       |
+| `customer.tags`     | `customerGroupId-<id>` (from order's group) |
+
+To wire **additional** Magento product, customer, or order attributes into Klar fields without touching this module's code, drop a `klar_field_mapping.xml` file into your own custom Magento module under `etc/`. Magento merges all such files automatically.
+
+### Example: send a product multiselect attribute as `productTags`
+
+If you have a product attribute `material_tags` (multiselect), this XML sends its labels as `productTags`:
+
+```xml
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:PlaceholderTech_Klar:etc/klar_field_mapping.xsd">
+    <line_item>
+        <field name="productTags" source="product_attribute" code="material_tags" type="multiselect_labels"/>
+    </line_item>
+</config>
+```
+
+### Example: wire UTM order attributes to `optionalIdentifiers`
+
+```xml
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:PlaceholderTech_Klar:etc/klar_field_mapping.xsd">
+    <optional_identifiers>
+        <field name="utmSource"   source="order_attribute" code="utm_source"/>
+        <field name="utmMedium"   source="order_attribute" code="utm_medium"/>
+        <field name="utmCampaign" source="order_attribute" code="utm_campaign"/>
+    </optional_identifiers>
+</config>
+```
+
+### Example: join multiselect labels into a single string
+
+If the target Klar field is a string (not an array), use `joined_labels`. The `separator` attribute is optional (default `, `):
+
+```xml
+<field name="productCollection" source="product_attribute" code="material_tags" type="joined_labels" separator=" | "/>
+```
+
+### Available `source` values
+
+| source              | reads from                       | requires `code` |
+| ------------------- | -------------------------------- | --------------- |
+| `product_attribute` | the line item's product          | yes             |
+| `customer_attribute`| the order's customer (registered)| yes             |
+| `order_attribute`   | the sales order itself           | yes             |
+| `customer_group`    | the order's customer group ID    | no              |
+| `category_top`      | the product's deepest category   | no              |
+
+### Available `type` values
+
+| type                | result                                       |
+| ------------------- | -------------------------------------------- |
+| `text` (default)    | raw value, cast to string                    |
+| `label`             | dropdown/select option label                 |
+| `multiselect_labels`| array of multiselect option labels           |
+| `joined_labels`     | multiselect labels joined with `separator`   |
+| `boolean`           | true/false                                   |
+| `int` / `float`     | numeric cast                                 |
+| `prefixed_id`       | `<prefix><value>` string                     |
+
+### Supported Klar groups
+
+`<line_item>`, `<customer>`, `<optional_identifiers>`, and `<order>` (for order-level fields like `tags`).
+
+After adding or changing a mapping run:
+
+```
+bin/magento cache:clean config
+```
+
+Then use the **Preview JSON** button in the admin UI to verify the result before syncing.
+
 ## Usage
 
 After installation, new and updated orders are automatically synced to Klar via a background queue.

@@ -7,6 +7,7 @@ use PlaceholderTech\Klar\Api\Data\CustomerInterface;
 use PlaceholderTech\Klar\Api\Data\CustomerInterfaceFactory;
 use PlaceholderTech\Klar\Helper\Config;
 use PlaceholderTech\Klar\Model\AbstractApiRequestParamsBuilder;
+use PlaceholderTech\Klar\Model\AttributeValueResolver;
 use Magento\Framework\Encryption\Encryptor;
 use Magento\Framework\Encryption\EncryptorInterface;
 use Magento\Framework\Intl\DateTimeFactory;
@@ -16,29 +17,22 @@ class CustomerBuilder extends AbstractApiRequestParamsBuilder
 {
     private CustomerInterfaceFactory $customerFactory;
     private EncryptorInterface $encryptor;
-
-
     private Config $config;
-    /**
-     * CustomerBuilder builder.
-     *
-     * @param DateTimeFactory $dateTimeFactory
-     * @param CustomerInterfaceFactory $customerFactory
-     * @param EncryptorInterface $encryptor
-     * @param Config $config
-     *
-     */
+    private AttributeValueResolver $attributeResolver;
+
     public function __construct(
         DateTimeFactory $dateTimeFactory,
         CustomerInterfaceFactory $customerFactory,
         EncryptorInterface $encryptor,
         Config $config,
+        AttributeValueResolver $attributeResolver
     ) {
         parent::__construct($dateTimeFactory);
         $this->customerFactory = $customerFactory;
         $this->encryptor = $encryptor;
         $this->config = $config;
-    }   
+        $this->attributeResolver = $attributeResolver;
+    }
 
     /**
      * Build customer from sales order.
@@ -65,14 +59,17 @@ class CustomerBuilder extends AbstractApiRequestParamsBuilder
         $customer->setEmail($customerEmail);
         $customer->setEmailHash($customerEmailHash);
 
-        // Get customer group ID from order and load group name
-        $customerGroupId = $salesOrder->getCustomerGroupId();
-        if ($customerGroupId) {
-            $tags = ["customerGroupId-" . (string)$customerGroupId];
-            $customer->setTags($tags);
+        $customerArray = $this->snakeToCamel($customer->toArray());
+
+        // Merge in configurable field mappings (tags, isNewsletterSubscriberAtTimeOfCheckout, ...)
+        $mappedFields = $this->attributeResolver->resolveAll('customer', [
+            'order' => $salesOrder,
+        ]);
+        foreach ($mappedFields as $name => $value) {
+            $customerArray[$name] = $value;
         }
 
-        return $this->snakeToCamel($customer->toArray());
+        return $customerArray;
     }
 
     /**
