@@ -88,7 +88,28 @@ class LineItemDiscountsBuilder extends AbstractApiRequestParamsBuilder
             return $discounts;
         }
 
-        if (round($discountLeft,2) > 0.02) {
+        // Backfill per-item amount for cart_fixed / buy_x_get_y discounts:
+        // these were added with discountAmount=0. Distribute the remaining
+        // discount (from Magento's stored discount_amount) to them.
+        if (round($discountLeft, 2) > 0.02) {
+            $zeroAmountDiscounts = [];
+            foreach ($discounts as $idx => $d) {
+                if (isset($d['discountAmount']) && (float)$d['discountAmount'] === 0.0) {
+                    $zeroAmountDiscounts[] = $idx;
+                }
+            }
+
+            if (!empty($zeroAmountDiscounts)) {
+                // Distribute evenly across all zero-amount discounts
+                $perDiscount = $discountLeft / count($zeroAmountDiscounts) / $qtyOrdered;
+                foreach ($zeroAmountDiscounts as $idx) {
+                    $discounts[$idx]['discountAmount'] = round($perDiscount, 4);
+                    $discountLeft -= round($perDiscount, 4) * $qtyOrdered;
+                }
+            }
+        }
+
+        if (round($discountLeft, 2) > 0.02) {
             $discounts[] = $this->buildOtherDiscount($discountLeft / $qtyOrdered);
         }
 
@@ -147,7 +168,10 @@ class LineItemDiscountsBuilder extends AbstractApiRequestParamsBuilder
         } elseif ($salesRule->getSimpleAction() === RuleInterface::DISCOUNT_ACTION_FIXED_AMOUNT) {
             $discount->setDiscountAmount((float)$salesRule->getDiscountAmount());
         } else {
-            return []; // Disallow other action types
+            // For cart_fixed and buy_x_get_y: per-item amount can't be calculated
+            // from the rule alone. Set 0 here — the caller will backfill the actual
+            // amount from Magento's stored discount_amount.
+            $discount->setDiscountAmount(0);
         }
 
         return $this->snakeToCamel($discount->toArray());
