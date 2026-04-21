@@ -125,6 +125,10 @@ class Api implements ApiInterface
      */
     private function setRequestData(array $salesOrders): void
     {
+        // Catch \Throwable (not just Exception) so a PHP 8 TypeError / Error
+        // from a single malformed order cannot kill the entire async queue
+        // batch. Callers rely on the batch continuing so sync state is
+        // written for the rest of the IDs.
         try {
             $items = [];
             foreach ($salesOrders as $salesOrder) {
@@ -132,7 +136,9 @@ class Api implements ApiInterface
             }
 
             $this->requestData = $this->jsonSerializer->serialize($items);
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
+            $this->requestData = '';
+            $this->lastError = 'Error building order payload: ' . $e->getMessage();
             $this->logger->error(__('Error building order payload: %1', $e->getMessage()));
         }
     }
