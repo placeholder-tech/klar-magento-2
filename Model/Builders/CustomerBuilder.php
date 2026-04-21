@@ -44,8 +44,13 @@ class CustomerBuilder extends AbstractApiRequestParamsBuilder
     public function buildFromSalesOrder(SalesOrderInterface $salesOrder): array
     {
         $customerId = $salesOrder->getCustomerId();
-        $normalizedEmail = strtolower(trim($salesOrder->getCustomerEmail()));
-        $customerEmail = $this->config->getSendEmail() ? $salesOrder->getCustomerEmail() : "redacted@getklar.com";
+        // Legacy / admin-created orders can have customer_email = NULL.
+        // PHP 8 trim(null) throws TypeError, which escapes catch(Exception)
+        // in the caller and kills the whole async queue batch. Cast to string
+        // defensively so a single bad row does not poison its siblings.
+        $rawEmail = (string)($salesOrder->getCustomerEmail() ?? '');
+        $normalizedEmail = strtolower(trim($rawEmail));
+        $customerEmail = $this->config->getSendEmail() ? $rawEmail : "redacted@getklar.com";
         $customerEmailHash = sha1($this->config->getPublicKey() . $normalizedEmail);
 
         if (!$customerId) {
