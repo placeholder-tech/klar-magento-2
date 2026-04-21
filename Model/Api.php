@@ -23,6 +23,8 @@ class Api implements ApiInterface
     private Json $jsonSerializer;
     private OrderCollectionFactory $orderCollectionFactory;
     private string $lastError = '';
+    /** @var int[] */
+    private array $lastFailedIds = [];
 
     /**
      * Api constructor.
@@ -102,6 +104,20 @@ class Api implements ApiInterface
     public function getLastError(): string
     {
         return $this->lastError;
+    }
+
+    /**
+     * Get order IDs that Klar rejected on the last send() call.
+     *
+     * Populated for Multi-Status (HTTP 207) responses where part of the batch
+     * was accepted and part rejected. Callers can use this to flag per-order
+     * sync state instead of failing the entire batch.
+     *
+     * @return int[]
+     */
+    public function getLastFailedIds(): array
+    {
+        return $this->lastFailedIds;
     }
 
     public function getJsonDataForOrders(array $ids): string
@@ -321,35 +337,79 @@ class Api implements ApiInterface
         );
 
         $this->lastError = '';
+        $this->lastFailedIds = [];
         $body = $this->getCurlBody();
+        $httpStatus = $this->getCurlClient()->getStatus();
         if (isset($body['status']) && $body['status'] === self::ORDER_STATUS_VALID) {
             $this->logger->info(__('OK — %1 order(s) accepted by Klar: %2', $batchCount, $orderLabel));
             $result = count($salesOrders);
         } elseif (isset($body['status']) && $body['status'] === self::ORDER_STATUS_INVALID) {
-            $errorMessages = [];
-            $this->logger->error(__('FAILED — %1 order(s) rejected by Klar: %2', $batchCount, $orderLabel));
+            $this->lastError = $this->collectErrorMessages($body, $orderLabel, $batchCount, false);
+        } elseif ($httpStatus === 207) {
+            // Multi-Status: part of the batch was accepted, part rejected.
+            // The endpoint is called with ?failedOrderIds=true so the rejected IDs
+            // are returned in the `orderIds` field.
+            $failedIds = [];
             if (isset($body['orderIds']) && is_array($body['orderIds'])) {
-                $this->logger->error(__('Failed order IDs: %1', implode(', ', $body['orderIds'])));
-            }
-            if (isset($body['errors']) && is_array($body['errors'])) {
-                foreach ($body['errors'] as $error) {
-                    if (is_string($error)) {
-                        $errorMessages[] = $error;
-                        $this->logger->error($error);
-                    } elseif (is_array($error) && isset($error['message'])) {
-                        $msg = ($error['key'] ?? 'unknown') . ': ' . $error['message'];
-                        $errorMessages[] = $msg;
-                        $this->logger->error($msg);
+                foreach ($body['orderIds'] as $failedId) {
+                    if (is_numeric($failedId)) {
+                        $failedIds[] = (int)$failedId;
                     }
                 }
             }
-            $this->lastError = implode(' | ', $errorMessages) ?: 'Validation failed';
+            $this->lastFailedIds = $failedIds;
+            $failedCount = count($failedIds);
+            $acceptedCount = max(0, $batchCount - $failedCount);
+
+            $this->lastError = $this->collectErrorMessages($body, $orderLabel, $failedCount, true);
+            $this->logger->info(__(
+                'PARTIAL — %1/%2 order(s) accepted by Klar, %3 rejected',
+                $acceptedCount,
+                $batchCount,
+                $failedCount
+            ));
+
+            $result = $acceptedCount;
         } else {
-            $httpStatus = $this->getCurlClient()->getStatus();
             $this->lastError = 'HTTP ' . $httpStatus;
             $this->logger->error(__('FAILED — Could not reach Klar API. HTTP %1. Orders: %2', $httpStatus, $orderLabel));
         }
 
         return $result;
+    }
+
+    /**
+     * Log and collect error messages from a rejection response body.
+     *
+     * @param array $body Decoded response body
+     * @param string $orderLabel Human-readable order label for the log
+     * @param int $rejectedCount Number of rejected orders in this batch
+     * @param bool $partial Whether this is a partial (HTTP 207) rejection
+     * @return string
+     */
+    private function collectErrorMessages(array $body, string $orderLabel, int $rejectedCount, bool $partial): string
+    {
+        $errorMessages = [];
+        $label = $partial ? __('FAILED — %1 order(s) rejected by Klar (partial): %2', $rejectedCount, $orderLabel)
+                          : __('FAILED — %1 order(s) rejected by Klar: %2', $rejectedCount, $orderLabel);
+        $this->logger->error($label);
+
+        if (isset($body['orderIds']) && is_array($body['orderIds'])) {
+            $this->logger->error(__('Failed order IDs: %1', implode(', ', $body['orderIds'])));
+        }
+        if (isset($body['errors']) && is_array($body['errors'])) {
+            foreach ($body['errors'] as $error) {
+                if (is_string($error)) {
+                    $errorMessages[] = $error;
+                    $this->logger->error($error);
+                } elseif (is_array($error) && isset($error['message'])) {
+                    $msg = ($error['key'] ?? 'unknown') . ': ' . $error['message'];
+                    $errorMessages[] = $msg;
+                    $this->logger->error($msg);
+                }
+            }
+        }
+
+        return implode(' | ', $errorMessages) ?: 'Validation failed';
     }
 }

@@ -30,31 +30,66 @@ class OrderQueue
     {
         $serializedData = $operation->getSerializedData();
         $ids = $this->jsonSerializer->unserialize($serializedData);
+        $ids = array_map('intval', (array)$ids);
+        $totalCount = count($ids);
+        $needRetry = false;
 
         try {
-            $result = (bool) $this->api->send($ids);
-            $syncValue = (int)$result;
-            $errorMessage = $result ? null : $this->api->getLastError();
-            $now = (new \DateTime())->format('Y-m-d H:i:s');
+            $acceptedCount = $this->api->send($ids);
+            $failedIds = array_map('intval', $this->api->getLastFailedIds());
+            $errorMessage = $this->api->getLastError() ?: null;
 
+            // Determine per-ID outcome:
+            // - If the API reported which IDs were rejected (HTTP 207 multi-status),
+            //   flag only those as failed and the rest as synced.
+            // - Otherwise fall back to batch-level success/failure inferred from
+            //   the accepted count.
+            if ($failedIds) {
+                $failedSet = array_flip($failedIds);
+                $successIds = array_values(array_filter($ids, static fn(int $id) => !isset($failedSet[$id])));
+            } elseif ($acceptedCount === $totalCount) {
+                $successIds = $ids;
+                $failedIds = [];
+            } else {
+                $successIds = [];
+                $failedIds = $ids;
+            }
+
+            $now = (new \DateTime())->format('Y-m-d H:i:s');
             $tableName = $this->connection->getTableName('klar_order_attributes');
-            foreach ($ids as $id) {
+
+            foreach ($successIds as $id) {
                 $this->connection->insertOnDuplicate(
                     $tableName,
                     [
                         'order_id' => (int)$id,
-                        'sync' => $syncValue,
+                        'sync' => 1,
+                        'synced_at' => $now,
+                        'error_message' => null,
+                    ],
+                    ['sync', 'synced_at', 'error_message']
+                );
+            }
+
+            foreach ($failedIds as $id) {
+                $this->connection->insertOnDuplicate(
+                    $tableName,
+                    [
+                        'order_id' => (int)$id,
+                        'sync' => 0,
                         'synced_at' => $now,
                         'error_message' => $errorMessage,
                     ],
                     ['sync', 'synced_at', 'error_message']
                 );
             }
+
+            $needRetry = !empty($failedIds);
         } catch (Exception $exception) {
-            $result = false;
+            $needRetry = true;
         }
 
-        if (!$result) {
+        if ($needRetry) {
             throw new Exception('#NEED_TO_RETRY#');
         }
     }
