@@ -251,6 +251,13 @@ class LineItemsBuilder extends AbstractApiRequestParamsBuilder
         }
 
         foreach ($lineItem->getDiscounts() as $lineItemDiscount) {
+            // The "Price Reduction" entry represents the gap between catalog list price and
+            // the actual sale price (originalPrice - priceInclTax). Since productGmv is now
+            // based on priceInclTax, this gap is already reflected and must not be subtracted
+            // again or totalAmountAfterTaxesAndDiscounts goes negative on every sale item.
+            if (($lineItemDiscount['title'] ?? null) === \PlaceholderTech\Klar\Api\Data\DiscountInterface::SPECIAL_PRICE_DISCOUNT_TITLE) {
+                continue;
+            }
             $discountAmount += $lineItemDiscount['discountAmount'] * $quantity;
         }
 
