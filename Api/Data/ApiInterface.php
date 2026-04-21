@@ -10,6 +10,7 @@ interface ApiInterface
     public const ORDERS_JSON_PATH = '/orders/json';
     public const ORDER_STATUS_VALID = 'VALID';
     public const ORDER_STATUS_INVALID = 'INVALID';
+    public const ORDER_STATUS_PARTIALLY_VALID = 'PARTIALLY_VALID';
     public const BATCH_SIZE = 250;
 
     /**
