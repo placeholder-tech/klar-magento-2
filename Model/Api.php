@@ -23,6 +23,8 @@ class Api implements ApiInterface
     private Json $jsonSerializer;
     private OrderCollectionFactory $orderCollectionFactory;
     private string $lastError = '';
+    private int $lastHttpStatus = 0;
+    private bool $lastResponseIsValidationFailure = false;
 
     /**
      * Api constructor.
@@ -102,6 +104,41 @@ class Api implements ApiInterface
     public function getLastError(): string
     {
         return $this->lastError;
+    }
+
+    /**
+     * Whether the last send() call should be retried by the caller.
+     *
+     * Returns true for transient failures (5xx, rate limiting, network errors)
+     * and false for deterministic failures (validation rejections, auth errors)
+     * where a retry cannot succeed without intervention.
+     */
+    public function isLastResponseRetryable(): bool
+    {
+        if ($this->lastResponseIsValidationFailure) {
+            return false;
+        }
+
+        $status = $this->lastHttpStatus;
+
+        // No HTTP response at all — network / timeout / DNS. Worth retrying.
+        if ($status === 0) {
+            return true;
+        }
+
+        // 408 Request Timeout, 425 Too Early, 429 Too Many Requests → transient.
+        if (in_array($status, [408, 425, 429], true)) {
+            return true;
+        }
+
+        // 5xx server errors → transient.
+        if ($status >= 500 && $status < 600) {
+            return true;
+        }
+
+        // Everything else (401, 403, 400, 404, ...) is treated as permanent;
+        // retrying won't help until the caller intervenes.
+        return false;
     }
 
     public function getJsonDataForOrders(array $ids): string
@@ -321,11 +358,14 @@ class Api implements ApiInterface
         );
 
         $this->lastError = '';
+        $this->lastResponseIsValidationFailure = false;
+        $this->lastHttpStatus = $this->getCurlClient()->getStatus();
         $body = $this->getCurlBody();
         if (isset($body['status']) && $body['status'] === self::ORDER_STATUS_VALID) {
             $this->logger->info(__('OK — %1 order(s) accepted by Klar: %2', $batchCount, $orderLabel));
             $result = count($salesOrders);
         } elseif (isset($body['status']) && $body['status'] === self::ORDER_STATUS_INVALID) {
+            $this->lastResponseIsValidationFailure = true;
             $errorMessages = [];
             $this->logger->error(__('FAILED — %1 order(s) rejected by Klar: %2', $batchCount, $orderLabel));
             if (isset($body['orderIds']) && is_array($body['orderIds'])) {
@@ -345,9 +385,8 @@ class Api implements ApiInterface
             }
             $this->lastError = implode(' | ', $errorMessages) ?: 'Validation failed';
         } else {
-            $httpStatus = $this->getCurlClient()->getStatus();
-            $this->lastError = 'HTTP ' . $httpStatus;
-            $this->logger->error(__('FAILED — Could not reach Klar API. HTTP %1. Orders: %2', $httpStatus, $orderLabel));
+            $this->lastError = 'HTTP ' . $this->lastHttpStatus;
+            $this->logger->error(__('FAILED — Could not reach Klar API. HTTP %1. Orders: %2', $this->lastHttpStatus, $orderLabel));
         }
 
         return $result;
