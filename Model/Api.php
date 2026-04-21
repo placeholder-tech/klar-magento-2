@@ -340,26 +340,23 @@ class Api implements ApiInterface
         $this->lastFailedIds = [];
         $body = $this->getCurlBody();
         $httpStatus = $this->getCurlClient()->getStatus();
-        if (isset($body['status']) && $body['status'] === self::ORDER_STATUS_VALID) {
+        $status = $body['status'] ?? null;
+        if ($status === self::ORDER_STATUS_VALID) {
             $this->logger->info(__('OK — %1 order(s) accepted by Klar: %2', $batchCount, $orderLabel));
             $result = count($salesOrders);
-        } elseif (isset($body['status']) && $body['status'] === self::ORDER_STATUS_INVALID) {
+        } elseif ($status === self::ORDER_STATUS_INVALID) {
             $this->lastError = $this->collectErrorMessages($body, $orderLabel, $batchCount, false);
-        } elseif ($httpStatus === 207) {
+        } elseif ($status === self::ORDER_STATUS_PARTIALLY_VALID || $httpStatus === 207) {
             // Multi-Status: part of the batch was accepted, part rejected.
-            // The endpoint is called with ?failedOrderIds=true so the rejected IDs
-            // are returned in the `orderIds` field.
-            $failedIds = [];
-            if (isset($body['orderIds']) && is_array($body['orderIds'])) {
-                foreach ($body['orderIds'] as $failedId) {
-                    if (is_numeric($failedId)) {
-                        $failedIds[] = (int)$failedId;
-                    }
-                }
-            }
+            // The /orders/json endpoint is called with ?failedOrderIds=true so Klar
+            // returns the rejected IDs as `failedOrderIds` and the accepted ones as
+            // `successfulOrderIds`.
+            $failedIds = $this->extractIds($body['failedOrderIds'] ?? []);
+            $successfulIds = $this->extractIds($body['successfulOrderIds'] ?? []);
             $this->lastFailedIds = $failedIds;
+
             $failedCount = count($failedIds);
-            $acceptedCount = max(0, $batchCount - $failedCount);
+            $acceptedCount = count($successfulIds) ?: max(0, $batchCount - $failedCount);
 
             $this->lastError = $this->collectErrorMessages($body, $orderLabel, $failedCount, true);
             $this->logger->info(__(
@@ -394,8 +391,9 @@ class Api implements ApiInterface
                           : __('FAILED — %1 order(s) rejected by Klar: %2', $rejectedCount, $orderLabel);
         $this->logger->error($label);
 
-        if (isset($body['orderIds']) && is_array($body['orderIds'])) {
-            $this->logger->error(__('Failed order IDs: %1', implode(', ', $body['orderIds'])));
+        $failedIdList = $body['failedOrderIds'] ?? $body['orderIds'] ?? null;
+        if (is_array($failedIdList) && $failedIdList) {
+            $this->logger->error(__('Failed order IDs: %1', implode(', ', $failedIdList)));
         }
         if (isset($body['errors']) && is_array($body['errors'])) {
             foreach ($body['errors'] as $error) {
@@ -411,5 +409,27 @@ class Api implements ApiInterface
         }
 
         return implode(' | ', $errorMessages) ?: 'Validation failed';
+    }
+
+    /**
+     * Normalise an ID list from a response body into integer IDs.
+     *
+     * @param mixed $ids
+     * @return int[]
+     */
+    private function extractIds($ids): array
+    {
+        if (!is_array($ids)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($ids as $id) {
+            if (is_numeric($id)) {
+                $result[] = (int)$id;
+            }
+        }
+
+        return $result;
     }
 }
