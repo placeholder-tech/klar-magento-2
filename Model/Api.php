@@ -25,6 +25,8 @@ class Api implements ApiInterface
     private string $lastError = '';
     /** @var int[] */
     private array $lastFailedIds = [];
+    private int $lastHttpStatus = 0;
+    private bool $lastResponseIsValidationFailure = false;
 
     /**
      * Api constructor.
@@ -118,6 +120,30 @@ class Api implements ApiInterface
     public function getLastFailedIds(): array
     {
         return $this->lastFailedIds;
+    }
+
+    /**
+     * Whether the last send() failure is worth retrying.
+     * Returns true for transient failures (5xx, rate limiting, network errors)
+     * and false for deterministic failures (validation, auth) where a retry
+     * cannot succeed without intervention.
+     */
+    public function isLastResponseRetryable(): bool
+    {
+        if ($this->lastResponseIsValidationFailure) {
+            return false;
+        }
+        $status = $this->lastHttpStatus;
+        if ($status === 0) {
+            return true;
+        }
+        if (in_array($status, [408, 425, 429], true)) {
+            return true;
+        }
+        if ($status >= 500 && $status < 600) {
+            return true;
+        }
+        return false;
     }
 
     public function getJsonDataForOrders(array $ids): string
@@ -344,15 +370,19 @@ class Api implements ApiInterface
 
         $this->lastError = '';
         $this->lastFailedIds = [];
+        $this->lastResponseIsValidationFailure = false;
+        $this->lastHttpStatus = $this->getCurlClient()->getStatus();
         $body = $this->getCurlBody();
-        $httpStatus = $this->getCurlClient()->getStatus();
+        $httpStatus = $this->lastHttpStatus;
         $status = $body['status'] ?? null;
         if ($status === self::ORDER_STATUS_VALID) {
             $this->logger->info(__('OK — %1 order(s) accepted by Klar: %2', $batchCount, $orderLabel));
             $result = count($salesOrders);
         } elseif ($status === self::ORDER_STATUS_INVALID) {
+            $this->lastResponseIsValidationFailure = true;
             $this->lastError = $this->collectErrorMessages($body, $orderLabel, $batchCount, false);
         } elseif ($status === self::ORDER_STATUS_PARTIALLY_VALID || $httpStatus === 207) {
+            $this->lastResponseIsValidationFailure = true;
             // Multi-Status: part of the batch was accepted, part rejected.
             // The /orders/json endpoint is called with ?failedOrderIds=true so Klar
             // returns the rejected IDs as `failedOrderIds` and the accepted ones as

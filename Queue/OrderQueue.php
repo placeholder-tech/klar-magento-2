@@ -84,7 +84,10 @@ class OrderQueue
                 );
             }
 
-            $needRetry = !empty($failedIds);
+            // Only retry transient failures (5xx, rate limit, network).
+            // Deterministic failures (validation, auth) can't succeed without
+            // code/data changes — retrying just hammers the API.
+            $needRetry = !empty($failedIds) && $this->api->isLastResponseRetryable();
         } catch (\Throwable $exception) {
             // Catch \Throwable (not just Exception) so PHP 8 TypeError / Error
             // from a buggy builder does not silently kill the consumer.
