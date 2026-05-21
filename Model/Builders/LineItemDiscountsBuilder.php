@@ -7,6 +7,7 @@ use PlaceholderTech\Klar\Api\Data\DiscountInterface;
 use PlaceholderTech\Klar\Api\Data\DiscountInterfaceFactory;
 use PlaceholderTech\Klar\Model\AbstractApiRequestParamsBuilder;
 use PlaceholderTech\Klar\Api\DiscountServiceInterface;
+use PlaceholderTech\Klar\Helper\Config;
 use Magento\Bundle\Model\Product\Type as BundleProductType;
 use Magento\Framework\Exception\LocalizedException;
 use Magento\Framework\Exception\NoSuchEntityException;
@@ -18,10 +19,13 @@ use Magento\SalesRule\Model\RuleFactory;
 
 class LineItemDiscountsBuilder extends AbstractApiRequestParamsBuilder
 {
+    private const AMPROMO_ACTION_PREFIX = 'ampromo_';
+
     private DiscountInterfaceFactory $discountFactory;
     private DiscountServiceInterface $discountService;
     private RuleRepositoryInterface $salesRuleRepository;
     private RuleFactory $ruleFactory;
+    private Config $config;
 
     /**
      * LineItemDiscountsBuilder constructor.
@@ -31,19 +35,22 @@ class LineItemDiscountsBuilder extends AbstractApiRequestParamsBuilder
      * @param DiscountServiceInterface $discountService
      * @param RuleRepositoryInterface $salesRuleRepository
      * @param RuleFactory $ruleFactory
+     * @param Config $config
      */
     public function __construct(
         DateTimeFactory $dateTimeFactory,
         DiscountInterfaceFactory $discountFactory,
         DiscountServiceInterface $discountService,
         RuleRepositoryInterface $salesRuleRepository,
-        RuleFactory $ruleFactory
+        RuleFactory $ruleFactory,
+        Config $config
     ) {
         parent::__construct($dateTimeFactory);
         $this->discountFactory = $discountFactory;
         $this->discountService = $discountService;
         $this->salesRuleRepository = $salesRuleRepository;
         $this->ruleFactory = $ruleFactory;
+        $this->config = $config;
     }
 
     /**
@@ -80,6 +87,24 @@ class LineItemDiscountsBuilder extends AbstractApiRequestParamsBuilder
                     if (isset($discount['discountAmount'])) {
                         $discountLeft -= $qtyOrdered * $discount['discountAmount'];
                     }
+                }
+            }
+        }
+
+        // Amasty Free Gift (GWP) rules: these add a free $0 item rather than
+        // reducing existing items' prices, so discount_amount is 0 on all items.
+        // When enabled, emit a zero-amount discount entry carrying the voucher
+        // code so Klar can attribute the order to the coupon.
+        if (!$discountAmount
+            && !$this->isBundle($salesOrderItem)
+            && $this->config->getIsAmastyGwpEnabled()
+            && $salesOrderItem->getAppliedRuleIds()
+        ) {
+            $ruleIds = explode(',', $salesOrderItem->getAppliedRuleIds());
+            foreach ($ruleIds as $ruleId) {
+                $gwpDiscount = $this->buildGwpRuleDiscount((int)$ruleId);
+                if (!empty($gwpDiscount)) {
+                    $discounts[] = $gwpDiscount;
                 }
             }
         }
@@ -172,6 +197,43 @@ class LineItemDiscountsBuilder extends AbstractApiRequestParamsBuilder
             // from the rule alone. Set 0 here — the caller will backfill the actual
             // amount from Magento's stored discount_amount.
             $discount->setDiscountAmount(0);
+        }
+
+        return $this->snakeToCamel($discount->toArray());
+    }
+
+    /**
+     * Build a zero-amount discount entry for an Amasty Free Gift (GWP) rule,
+     * carrying the voucher code so Klar can attribute the order to the coupon.
+     *
+     * Only emits a discount if the rule's simple_action starts with "ampromo_"
+     * and the rule has a specific coupon code attached.
+     *
+     * @param int $ruleId
+     * @return array
+     */
+    private function buildGwpRuleDiscount(int $ruleId): array
+    {
+        try {
+            $salesRule = $this->salesRuleRepository->getById($ruleId);
+        } catch (NoSuchEntityException|LocalizedException $e) {
+            return [];
+        }
+
+        $action = (string)$salesRule->getSimpleAction();
+        if (strpos($action, self::AMPROMO_ACTION_PREFIX) !== 0) {
+            return [];
+        }
+
+        $discount = $this->discountFactory->create();
+        $discount->setTitle($salesRule->getName());
+        $discount->setDescriptor($salesRule->getDescription());
+        $discount->setDiscountAmount(0);
+
+        if ($salesRule->getCouponType() === RuleInterface::COUPON_TYPE_SPECIFIC_COUPON) {
+            $couponCode = $this->ruleFactory->create()->load($ruleId)->getCouponCode();
+            $discount->setIsVoucher(true);
+            $discount->setVoucherCode($couponCode);
         }
 
         return $this->snakeToCamel($discount->toArray());

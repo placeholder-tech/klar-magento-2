@@ -80,6 +80,16 @@
                     </depends>
                 </field>
 
+                <field id="amasty_gwp" translate="label comment" sortOrder="33.5" showInDefault="1" showInWebsite="0" showInStore="0"
+                       type="select">
+                    <label>Amasty Free Gift (GWP) Support</label>
+                    <comment><![CDATA[Enable to pass voucher codes from Amasty Free Gift Pro rules (ampromo_items) to Klar. When enabled, free gift line items will include the associated coupon code as a discount entry.]]></comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+
                 <field id="test_connection" translate="label" type="button" sortOrder="34" showInDefault="1">
                     <label>Connection</label>
                     <frontend_model>PlaceholderTech\Klar\Block\Adminhtml\System\Config\TestConnectionButton</frontend_model>

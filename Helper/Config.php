@@ -21,6 +21,7 @@ class Config extends AbstractHelper
     private const CONFIG_PATH_SEND_EMAIL = 'klar/integration/send_email';
     private const CONFIG_PATH_PUBLIC_KEY = 'klar/integration/public_key';
     private const CONFIG_PATH_BATCH_SIZE = 'klar/integration/batch_size';
+    private const CONFIG_PATH_AMASTY_GWP = 'klar/integration/amasty_gwp';
     private const CONFIG_PATH_WEIGHT_UNIT = 'general/locale/weight_unit';
 
     private Encrypted $encrypted;
@@ -134,6 +135,16 @@ class Config extends AbstractHelper
             return 250;
         }
         return $value;
+    }
+
+    /**
+     * Check if Amasty Free Gift (GWP) support is enabled.
+     *
+     * @return bool
+     */
+    public function getIsAmastyGwpEnabled(): bool
+    {
+        return (bool)$this->scopeConfig->getValue(self::CONFIG_PATH_AMASTY_GWP);
     }
 
     /**
