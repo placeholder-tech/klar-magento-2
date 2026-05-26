@@ -394,7 +394,30 @@ class Api implements ApiInterface
             $failedCount = count($failedIds);
             $acceptedCount = count($successfulIds) ?: max(0, $batchCount - $failedCount);
 
-            $this->lastError = $this->collectErrorMessages($body, $orderLabel, $failedCount, true);
+            // Split order labels into accepted/failed for accurate logging
+            $failedSet = array_flip($failedIds);
+            $acceptedLabels = [];
+            $failedLabels = [];
+            foreach ($salesOrders as $order) {
+                $label = $order->getIncrementId() . ' (id:' . $order->getEntityId() . ')';
+                if (isset($failedSet[(int)$order->getEntityId()])) {
+                    $failedLabels[] = $label;
+                } else {
+                    $acceptedLabels[] = $label;
+                }
+            }
+
+            $failedLabel = implode(', ', $failedLabels) ?: $orderLabel;
+            $this->lastError = $this->collectErrorMessages($body, $failedLabel, $failedCount, true);
+
+            if ($acceptedCount > 0) {
+                $this->logger->info(__(
+                    'OK — %1 order(s) accepted by Klar (partial batch): %2',
+                    $acceptedCount,
+                    implode(', ', $acceptedLabels)
+                ));
+            }
+
             $this->logger->info(__(
                 'PARTIAL — %1/%2 order(s) accepted by Klar, %3 rejected',
                 $acceptedCount,

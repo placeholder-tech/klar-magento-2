@@ -59,7 +59,7 @@ class LineItemsBuilder extends AbstractApiRequestParamsBuilder
 
             $product = $salesOrderItem->getProduct();
             $productVariant = $this->getProductVariant($salesOrderItem);
-            $totalBeforeTaxesAndDiscounts = (float)$salesOrderItem->getRowTotalInclTax();
+            $totalBeforeTaxesAndDiscounts = $this->getProductGmv($salesOrderItem) * (float)$salesOrderItem->getQtyOrdered();
             $weightInGrams = $product ? $this->getWeightInGrams($product) : 0;
 
             /* @var LineItemInterface $lineItem */
@@ -227,7 +227,12 @@ class LineItemsBuilder extends AbstractApiRequestParamsBuilder
     private function getProductGmv(SalesOrderItemInterface $salesOrderItem): float
     {
         $priceInclTax = (float) $salesOrderItem->getPriceInclTax();
-        return $priceInclTax !== 0.0 ? $priceInclTax : (float) $salesOrderItem->getOriginalPrice();
+        $originalPrice = (float) $salesOrderItem->getOriginalPrice();
+
+        // GMV = "recommended retail price" (Klar API spec).
+        // max() handles both sale prices (originalPrice > priceInclTax)
+        // and configurable surcharges (priceInclTax > originalPrice).
+        return max($priceInclTax, $originalPrice);
     }
 
     /**
@@ -251,13 +256,6 @@ class LineItemsBuilder extends AbstractApiRequestParamsBuilder
         }
 
         foreach ($lineItem->getDiscounts() as $lineItemDiscount) {
-            // The "Price Reduction" entry represents the gap between catalog list price and
-            // the actual sale price (originalPrice - priceInclTax). Since productGmv is now
-            // based on priceInclTax, this gap is already reflected and must not be subtracted
-            // again or totalAmountAfterTaxesAndDiscounts goes negative on every sale item.
-            if (($lineItemDiscount['title'] ?? null) === \PlaceholderTech\Klar\Api\Data\DiscountInterface::SPECIAL_PRICE_DISCOUNT_TITLE) {
-                continue;
-            }
             $discountAmount += $lineItemDiscount['discountAmount'] * $quantity;
         }
 
