@@ -30,7 +30,7 @@ class Order extends Command
     public function __construct(
         Api $api,
         OrderPublisher $orderPublisher,
-        string $name = null
+        ?string $name = null
     ) {
         parent::__construct($name);
         $this->api = $api;
