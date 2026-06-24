@@ -56,7 +56,7 @@ class TaxesBuilder extends AbstractApiRequestParamsBuilder
      */
     public function build(
         int $salesOrderId,
-        OrderItemInterface $salesOrderItem = null,
+        ?OrderItemInterface $salesOrderItem = null,
         string $taxableItemType = self::TAXABLE_ITEM_TYPE_PRODUCT
     ): array {
         $taxes = [];
