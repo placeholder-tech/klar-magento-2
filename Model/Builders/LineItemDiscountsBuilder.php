@@ -12,9 +12,11 @@ use Magento\Bundle\Model\Product\Type as BundleProductType;
 use Magento\Framework\Exception\LocalizedException;
 use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Framework\Intl\DateTimeFactory;
+use Magento\Sales\Api\Data\OrderInterface as SalesOrderInterface;
 use Magento\Sales\Api\Data\OrderItemInterface as SalesOrderItemInterface;
 use Magento\SalesRule\Api\Data\RuleInterface;
 use Magento\SalesRule\Api\RuleRepositoryInterface;
+use Magento\SalesRule\Model\CouponFactory;
 use Magento\SalesRule\Model\RuleFactory;
 
 class LineItemDiscountsBuilder extends AbstractApiRequestParamsBuilder
@@ -26,6 +28,21 @@ class LineItemDiscountsBuilder extends AbstractApiRequestParamsBuilder
     private RuleRepositoryInterface $salesRuleRepository;
     private RuleFactory $ruleFactory;
     private Config $config;
+    private ?CouponFactory $couponFactory;
+
+    /**
+     * Coupon code of the sales order currently being built (set per call
+     * by buildFromSalesOrderItem when the order is passed in).
+     */
+    private ?string $orderCouponCode = null;
+
+    /**
+     * Memoized coupon-code -> rule-id lookups (one DB query per distinct
+     * code per process; queue consumers process orders in batches).
+     *
+     * @var array<string, int|null>
+     */
+    private array $couponRuleIdCache = [];
 
     /**
      * LineItemDiscountsBuilder constructor.
@@ -36,6 +53,7 @@ class LineItemDiscountsBuilder extends AbstractApiRequestParamsBuilder
      * @param RuleRepositoryInterface $salesRuleRepository
      * @param RuleFactory $ruleFactory
      * @param Config $config
+     * @param CouponFactory|null $couponFactory
      */
     public function __construct(
         DateTimeFactory $dateTimeFactory,
@@ -43,7 +61,8 @@ class LineItemDiscountsBuilder extends AbstractApiRequestParamsBuilder
         DiscountServiceInterface $discountService,
         RuleRepositoryInterface $salesRuleRepository,
         RuleFactory $ruleFactory,
-        Config $config
+        Config $config,
+        ?CouponFactory $couponFactory = null
     ) {
         parent::__construct($dateTimeFactory);
         $this->discountFactory = $discountFactory;
@@ -51,17 +70,30 @@ class LineItemDiscountsBuilder extends AbstractApiRequestParamsBuilder
         $this->salesRuleRepository = $salesRuleRepository;
         $this->ruleFactory = $ruleFactory;
         $this->config = $config;
+        $this->couponFactory = $couponFactory;
     }
 
     /**
      * Build line item discounts array from sales order item.
      *
+     * Pass the sales order too: its coupon_code is the code the customer
+     * actually redeemed, which is the only reliable source for rules using
+     * auto-generated coupons (their rule has no primary coupon row, so
+     * Rule::getCouponCode() returns null there).
+     *
      * @param SalesOrderItemInterface $salesOrderItem
+     * @param SalesOrderInterface|null $salesOrder
      *
      * @return array
      */
-    public function buildFromSalesOrderItem(SalesOrderItemInterface $salesOrderItem): array
-    {
+    public function buildFromSalesOrderItem(
+        SalesOrderItemInterface $salesOrderItem,
+        ?SalesOrderInterface $salesOrder = null
+    ): array {
+        $this->orderCouponCode = $salesOrder && $salesOrder->getCouponCode() !== null
+            ? (string)$salesOrder->getCouponCode()
+            : null;
+
         $discounts = [];
         $discountAmount = $this->discountService->getDiscountAmountFromOrderItem($salesOrderItem);
         $discountLeft = $discountAmount;
@@ -181,10 +213,8 @@ class LineItemDiscountsBuilder extends AbstractApiRequestParamsBuilder
         $discount->setDescriptor($salesRule->getDescription());
 
         if ($salesRule->getCouponType() === RuleInterface::COUPON_TYPE_SPECIFIC_COUPON) {
-            $couponCode = $this->ruleFactory->create()->load($ruleId)->getCouponCode();
-
             $discount->setIsVoucher(true);
-            $discount->setVoucherCode($couponCode);
+            $discount->setVoucherCode($this->resolveVoucherCode($ruleId));
         }
 
         if ($salesRule->getSimpleAction() === RuleInterface::DISCOUNT_ACTION_BY_PERCENT) {
@@ -231,12 +261,65 @@ class LineItemDiscountsBuilder extends AbstractApiRequestParamsBuilder
         $discount->setDiscountAmount(0);
 
         if ($salesRule->getCouponType() === RuleInterface::COUPON_TYPE_SPECIFIC_COUPON) {
-            $couponCode = $this->ruleFactory->create()->load($ruleId)->getCouponCode();
             $discount->setIsVoucher(true);
-            $discount->setVoucherCode($couponCode);
+            $discount->setVoucherCode($this->resolveVoucherCode($ruleId));
         }
 
         return $this->snakeToCamel($discount->toArray());
+    }
+
+    /**
+     * Resolve the voucher code for a specific-coupon sales rule.
+     *
+     * Prefer the coupon code redeemed on the order, but only when that code
+     * actually belongs to this rule (orders can carry several applied rules).
+     * Fall back to the rule's primary coupon, which covers manually defined
+     * specific codes. For auto-generation rules the primary coupon does not
+     * exist, so without the order-level code the result is null (pre-fix
+     * behavior).
+     *
+     * @param int $ruleId
+     *
+     * @return string|null
+     */
+    private function resolveVoucherCode(int $ruleId): ?string
+    {
+        if ($this->orderCouponCode !== null
+            && $this->orderCouponCode !== ''
+            && $this->getRuleIdForCouponCode($this->orderCouponCode) === $ruleId
+        ) {
+            return $this->orderCouponCode;
+        }
+
+        return $this->ruleFactory->create()->load($ruleId)->getCouponCode();
+    }
+
+    /**
+     * Look up which rule a coupon code belongs to (memoized).
+     *
+     * @param string $couponCode
+     *
+     * @return int|null
+     */
+    private function getRuleIdForCouponCode(string $couponCode): ?int
+    {
+        if (!array_key_exists($couponCode, $this->couponRuleIdCache)) {
+            if ($this->couponFactory === null) {
+                // BC fallback: the parameter was appended after release, so
+                // it defaults to null for callers built against the old
+                // constructor signature.
+                $this->couponFactory = \Magento\Framework\App\ObjectManager::getInstance()
+                    ->get(CouponFactory::class);
+            }
+
+            $coupon = $this->couponFactory->create()->loadByCode($couponCode);
+
+            $this->couponRuleIdCache[$couponCode] = $coupon->getRuleId()
+                ? (int)$coupon->getRuleId()
+                : null;
+        }
+
+        return $this->couponRuleIdCache[$couponCode];
     }
 
     /**

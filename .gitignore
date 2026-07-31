@@ -1,1 +1,7 @@
 CLAUDE.md
+/Test/
+/bug_*/
+/lancedb/
+/.codegraph/
+/temp.log
+/*.patch
