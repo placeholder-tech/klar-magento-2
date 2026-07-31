@@ -79,7 +79,9 @@ class LineItemsBuilder extends AbstractApiRequestParamsBuilder
             $lineItem->setProductShippingWeightInGrams($weightInGrams);
             $lineItem->setSku($salesOrderItem->getSku());
             $lineItem->setQuantity((float)$salesOrderItem->getQtyOrdered());
-            $lineItem->setDiscounts($this->discountsBuilder->buildFromSalesOrderItem($salesOrderItem));
+            $lineItem->setDiscounts(
+                $this->discountsBuilder->buildFromSalesOrderItem($salesOrderItem, $salesOrder)
+            );
             $lineItem->setTaxes(
                 $this->taxesBuilder->build((int)$salesOrderItem->getOrderId(), $salesOrderItem)
             );
